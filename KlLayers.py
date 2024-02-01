@@ -2,12 +2,10 @@
 import torch
 from torch import nn
 from torch.nn import functional as F
-from torch import Module
+from torch.nn.modules import Module
 
-
-def local_reparam_trick(mu, logvar, cuda = False, sample = True):
-    """ Function for local reparameterization trick. This is used to sample from the Gaussian distribution
-        using the mean and log variance of the distribution. This is used for sampling dropout masks and weights.
+def reparameterize(mu, logvar, cuda = False, sample = True):
+    """ Function for reparameterization. .
         This is based of the paper "INSERT PAPER NAME HERE" by INSERT AUTHORS HERE (INSERT YEAR HERE)"
     """
     if sample:
@@ -22,8 +20,7 @@ def local_reparam_trick(mu, logvar, cuda = False, sample = True):
     else:
         return mu
 
-
-Class KlLayers(Module):
+class KlLayers(Module):
     """ Class for KL divergence layers. This is an implementation of Fully Connected Group Normal-Jeffrey's layer.
         This is based of the paper "Efficacy of Bayesian Neural Networks in Active Learning" by Rakish & Jain (2017)
     """
@@ -43,6 +40,12 @@ Class KlLayers(Module):
 
         # initialize parameters
         self.reset_parameters(initial_weights, initial_bias)
+
+        self.sigmoid = nn.Sigmoid()
+        self.softplus = nn.Softplus()
+
+        self.epsilon = 1e-8 # epsilon value used for numerical stability
+
 
     def reset_parameters(self, initial_weights, initial_bias):
         """ Function for initializing the parameters of the layer. """
@@ -64,3 +67,52 @@ Class KlLayers(Module):
         self.weight_logvar.data.normal_(-9, 1e-2)
         self.bias_logvar.data.normal_(-9, 1e-2)
 
+    def clip_variances(self):
+        if self.clip_var:
+            self.weight_logvar.data.clamp_(max=math.log(self.clip_var))
+            self.bias_logvar.data.clamp_(max=math.log(self.clip_var))
+
+    def get_log_dropout_rates(self):
+        log_alpha = self.dropout_logvar - torch.log(self.dropout_mu.pow(2) + self.epsilon)
+        return log_alpha
+
+    def posterior_parameters(self):
+        """ Function for getting the posterior parameters of the layer. """
+        weight_variance, dropout_variance = self.weight_logvar.exp(), self.dropout_logvar.exp()
+        self.posterior_weight_variance = self.dropout_mu.pow(2) * weight_variance + dropout_variance * self.weight_mu.pow(2) * weight_variance
+        self.posterior_weight_mean = self.weight_mu * self.dropout_mu
+        return self.posterior_weight_mean, self.posterior_weight_variance
+
+    def forward(self, x):
+        self.posterior_parameters()
+        return F.linear(x, self.posterior_weight_mean, self.bias_mu)
+
+        batch_size = x.size()[0]
+
+        z = reparameterize(self.dropout_mu.repeat(batch_size, 1), self.dropout_logvar.repeat(batch_size, 1), sampling = self.training, cuda = self.cuda)
+
+        # local reparameterization trick
+        xz = x * z
+        mu_activation = F.linear(xz, self.weight_mu, self.bias_mu)
+        var_activation = F.linear(xz.pow(2), self.weight_logvar.exp(), self.bias_logvar.exp())
+
+        return reparameterize(mu_activation, var_activation, sampling = self.training, cuda = self.cuda)
+
+    def kl_divergence(self):
+        k1, k2, k3 = 0.63576, 1.87320, 1.48695 # approximations made by Molchanov et al. (2017)
+        log_alpha = self.get_log_dropout_rates()
+        KLD = -torch.sum(k1 * self.sigmoid(k2 + k3 * log_alpha) - 0.5 * self.softplus(-log_alpha) - k1)
+
+        KLD_element = -0.5 *self.weight_logvar + 0.5 *(self.weight_logvar.exp() + self.weight_mu.pow(2)) - 0.5
+        KLD += torch.sum(KLD_element)
+
+        KLD_element = -0.5 *self.bias_logvar + 0.5 *(self.bias_logvar.exp() + self.bias_mu.pow(2)) - 0.5
+        KLD += torch.sum(KLD_element)
+
+        return KLD
+
+    # for debugging purposes
+    def __repr__(self):
+        return self.__class__.__name__ + ' (' \
+               + str(self.in_features) + ' -> ' \
+               + str(self.out_features) + ')'
