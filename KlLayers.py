@@ -1,4 +1,3 @@
-# imports
 import torch
 from torch import nn
 from torch.nn import functional as F
@@ -11,12 +10,12 @@ def reparameterize(mu, logvar, cuda = False, sample = True):
     if sample:
         std = logvar.mul(0.5).exp_()
         if cuda:
-            epsilon = torch.cuda.FloatTensor(std.size()).normal_()
+            eps = torch.cuda.FloatTensor(std.size()).normal_()
         else:
-            epsilon = torch.FloatTensor(std.size()).normal_()
+            eps = torch.FloatTensor(std.size()).normal_()
         
-        epsilon = torch.autograd.Variable(epsilon)
-        return mu + std * epsilon
+        eps = torch.autograd.Variable(eps)
+        return mu + std * eps
     else:
         return mu
 
@@ -27,9 +26,9 @@ class KlLayers(Module):
 
     def __init__(self, in_features, out_features, cuda = False, initial_weights = None, initial_bias = None, clip_variance = None):
         super(KlLayers, self).__init__()
+        self.cuda = cuda
         self.in_features = in_features
         self.out_features = out_features
-        self.cuda = cuda
         self.clip_variance = clip_variance
         self.dropout_mu = nn.Parameter(torch.Tensor(in_features)) # mean of the Gaussian distribution used for sampling dropout masks
         self.dropout_logvar = nn.Parameter(torch.Tensor(in_features)) # log variance of the Gaussian distribution used for sampling dropout masks
