@@ -27,7 +27,7 @@ class runBNN:
     def __init__(self, model, data_train, data_test, epoch, lr, optimizer, criterion, device):
         self.model = model
         self.data_train = data_train
-        self.data_test = data_test
+        self.data_test = DataLoader(data_test, batch_size=64, shuffle=False)
         self.epoch = epoch
         self.lr = lr
         self.optimizer = optimizer
@@ -35,6 +35,7 @@ class runBNN:
         self.device = device
         self.model.to(device)
         self.optimizer = optimizer(self.model.parameters(), lr=lr)
+        self.input_dim = len(data_test) # input_dim but have to think about this
 
     def train(self):
         for i in range(self.epoch):
@@ -115,8 +116,8 @@ for epoch in range(2):
 
 
 # run the BNN
-#model = SimpleFFBNN(dataloader_train, dataloader_train)
-#print(model)
+model = SimpleFFBNN(input_dim, 1)
+print(model)
 
 #run = runBNN(model, dataloader_train, dataloader_test, 100, 0.001, torch.optim.Adam, nn.MSELoss(), device)
 #self, model, data_train, data_test, epoch, lr, optimizer, criterion, device
