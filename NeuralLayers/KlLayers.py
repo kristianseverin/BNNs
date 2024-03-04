@@ -98,7 +98,7 @@ class KlLayers(Module):
         mu_activation = F.linear(xz, self.weight_mu, self.bias_mu)
         var_activation = F.linear(xz.pow(2), self.weight_logvar.exp(), self.bias_logvar.exp())
 
-        return reparameterize(mu_activation, var_activation, sampling = self.training, cuda = self.cuda)
+        return reparameterize(mu_activation, var_activation.log(), sampling = self.training, cuda = self.cuda)
 
     def kl_divergence(self):
         k1, k2, k3 = 0.63576, 1.87320, 1.48695 # approximations made by Molchanov et al. (2017)

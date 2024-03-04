@@ -6,6 +6,8 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from torch.utils.data import DataLoader, TensorDataset
 from Utils import custom_data_loader
+import torch.nn as nn
+import torch.optim as optim
 
 cuda = torch.cuda.is_available()
 print("CUDA Available: ", cuda)
@@ -109,16 +111,6 @@ dataset_test = TensorDataset(X_test, y_test)
 dataloader_train = DataLoader(dataset_train, batch_size=64, shuffle=True)
 dataloader_test = DataLoader(dataset_test, batch_size=64, shuffle=False)
 
-print(f' dataloadertrain {dataloader_train}')
-print(f' dataloadertest {dataloader_test}')
-
-
-# print output of dataloaders
-for X, y in dataloader_train:
-    print(f'X is: {X}')
-    print(f'y is: {y}')
-
-
 
 # run the simpleFFBNN with the X, y dataloader_train
 #for epoch in range(2):
@@ -126,21 +118,48 @@ for X, y in dataloader_train:
   #      print(f'Epoch: {epoch} X: {X} y: {y}')
 
 
-# print shape
-print(f'X shape: {X.shape}')
-print(f'y shape: {y.shape}')
-
-print(f'X0 type: {type(X)}')
-print(f'X1 type: {type(X[1])}')
-
-print(f'y0 type: {type(y)}')
-print(f'y1 type: {type(y[1])}')
-
-
 
 # run the BNN
-regressor = SimpleFFBNN(input_dim = 32, output_dim =1)
+regressor = SimpleFFBNN(input_dim = 4, output_dim =1)
 print(regressor)
-
-#run = runBNN(model, dataloader_train, dataloader_test, 100, 0.001, torch.optim.Adam, nn.MSELoss(), device)
+optimizer = optim.Adam(regressor.parameters(), lr=0.01)
 #self, model, data_train, data_test, epoch, lr, optimizer, criterion, device
+
+run = runBNN(regressor, dataloader_train, dataloader_test, 1000, 0.001, torch.optim.Adam, nn.MSELoss(), device)
+run.train()
+
+
+""" def evaluate_regression(regressor,
+                        X,
+                        y,
+                        samples = 100,
+                        std_multiplier = 2):
+    preds = [regressor(X) for i in range(samples)]
+    preds = torch.stack(preds)
+    means = preds.mean(axis=0)
+    stds = preds.std(axis=0)
+    ci_upper = means + (std_multiplier * stds)
+    ci_lower = means - (std_multiplier * stds)
+    ic_acc = (ci_lower <= y) * (ci_upper >= y)
+    ic_acc = ic_acc.float().mean()
+    return ic_acc, (ci_upper >= y).float().mean(), (ci_lower <= y).float().mean()
+
+
+iteration = 0
+for epoch in range(100):
+    for i, (datapoints, labels) in enumerate(dataloader_train):
+        optimizer.zero_grad()
+
+        loss = regressor.sample_elbo(inputs=datapoints, 
+                                    labels=labels, 
+                                    criterion= torch.nn.MSELoss(),
+                                    sample_nbr=3,
+                                    complexity_cost_weight=1/X_train.shape[0])
+
+        loss.backward()
+        optimizer.step()
+
+        iteration += 1
+        if iteration % 10 == 0:
+            ic_acc, upper, lower = evaluate_regression(regressor, X_test, y_test)
+            print(f'Epoch: {epoch}, Iteration: {iteration}, Loss: {loss.item()}, IC Accuracy: {ic_acc.item()}, Upper: {upper.item()}, Lower: {lower.item()}') """
