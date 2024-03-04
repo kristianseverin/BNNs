@@ -55,12 +55,12 @@ class KlLayers(Module):
 
         self.dropout_mu.data.normal_(1, 1e-2)
 
-        if initial_weights is None:
+        if initial_weights is not None:
             self.weight_mu.data = torch.Tensor(initial_weights)
         else:
-            self.weight_mu.data.uniform_(0, stdv)
+            self.weight_mu.data.normal_(0, stdv)
 
-        if initial_bias is None:
+        if initial_bias is not None:
             self.bias_mu.data = torch.Tensor(initial_bias)
         else:
             self.bias_mu.data.fill_(0)

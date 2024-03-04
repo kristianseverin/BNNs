@@ -2,11 +2,12 @@ import torch
 import torch.nn as nn
 from torch.nn import Conv2d, MaxPool2d, ReLU
 import torch.nn.functional as F
-import KlLayers
+from NeuralLayers import KlLayers
 from blitz.modules import BayesianLinear, BayesianConv2d
 from blitz.utils import variational_estimator
 torch.manual_seed(43)
 
+@variational_estimator
 class SimpleFFBNN(nn.Module):
     def __init__(self, input_dim, output_dim):
         super(SimpleFFBNN, self).__init__()

@@ -5,6 +5,7 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from torch.utils.data import DataLoader, TensorDataset
+from Utils import custom_data_loader
 
 cuda = torch.cuda.is_available()
 print("CUDA Available: ", cuda)
@@ -18,7 +19,7 @@ else:
     device = torch.device('cpu')
 print("Device: ", device)
 
-from simpleFFBNN import SimpleFFBNN
+from Models.simpleFFBNN import SimpleFFBNN
 
 
 # a class that runs the BNN
@@ -35,7 +36,7 @@ class runBNN:
         self.device = device
         self.model.to(device)
         self.optimizer = optimizer(self.model.parameters(), lr=lr)
-        self.input_dim = len(data_test) # input_dim but have to think about this
+        #self.input_dim = len(data_test) # input_dim but have to think about this
 
     def train(self):
         for i in range(self.epoch):
@@ -67,20 +68,33 @@ class runBNN:
 
     
 # load data
-df = pd.read_csv('quality_of_food.csv')
+#df = pd.read_csv('quality_of_food.csv')
 
 # convert 'savings' column to numeric
-df['savings'] = np.where(df['savings'] == 'low', 0, np.where(df['savings'] == 'medium', 1, 2))
+#df['savings'] = np.where(df['savings'] == 'low', 0, np.where(df['savings'] == 'medium', 1, 2))
 
 # predictors and target
-X = df.drop(columns=['quality_of_food'])
-y = df[['quality_of_food']]
+#X = df.drop(columns=['quality_of_food'])
+#y = df[['quality_of_food']]
+
+df_custom = pd.read_csv('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/Data/quality_of_food.csv')
+
+# print shape of x
+#print(f' df_custom {df_custom.shape}')
+
+df_custom = custom_data_loader(df_custom, is_normalize=True)
+#print(f' df_custom {df_custom.shape}')
 
 # scale the data
 scaler = StandardScaler()
 
+# fit transform the data
+X = df_custom.X
+print(f' X {X}')
+y = df_custom.y
+
 X = scaler.fit_transform(X)
-y = scaler.fit_transform(y.values.reshape(-1, 1))
+y = scaler.fit_transform(y.reshape(-1,1))
 
 # split the data
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=43)
@@ -101,23 +115,32 @@ print(f' dataloadertest {dataloader_test}')
 
 # print output of dataloaders
 for X, y in dataloader_train:
-    print(f'X: {X}')
-    print(f'y: {y}')
+    print(f'X is: {X}')
+    print(f'y is: {y}')
 
 
 
 # run the simpleFFBNN with the X, y dataloader_train
-for epoch in range(2):
-    for X, y in dataloader_train:
-        print(f'Epoch: {epoch} X: {X} y: {y}')
+#for epoch in range(2):
+ #   for X, y in dataloader_train:
+  #      print(f'Epoch: {epoch} X: {X} y: {y}')
 
 
+# print shape
+print(f'X shape: {X.shape}')
+print(f'y shape: {y.shape}')
+
+print(f'X0 type: {type(X)}')
+print(f'X1 type: {type(X[1])}')
+
+print(f'y0 type: {type(y)}')
+print(f'y1 type: {type(y[1])}')
 
 
 
 # run the BNN
-model = SimpleFFBNN(input_dim, 1)
-print(model)
+regressor = SimpleFFBNN(input_dim = 32, output_dim =1)
+print(regressor)
 
 #run = runBNN(model, dataloader_train, dataloader_test, 100, 0.001, torch.optim.Adam, nn.MSELoss(), device)
 #self, model, data_train, data_test, epoch, lr, optimizer, criterion, device
