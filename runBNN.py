@@ -74,6 +74,24 @@ class runBNN:
                     total += 1
             print('Test Accuracy: ', round(correct / total, 3))
 
+    def evaluate_regression(self, samples = 100, std_multiplier = 2):
+        self.model.eval()
+        X, y = next(iter(self.data_test))
+        X, y = X.to(self.device), y.to(self.device)
+
+
+        preds = [self.model(X) for i in range(samples)]
+        preds = torch.stack(preds)
+        means = preds.mean(axis=0)
+        stds = preds.std(axis=0)
+        ci_upper = means + (std_multiplier * stds)
+        ci_lower = means - (std_multiplier * stds)
+        ic_acc = (ci_lower <= y) * (ci_upper >= y)
+        print(f'ic_acc after first transformation: {ic_acc}')
+        ic_acc = ic_acc.float().mean()
+        print(f'ic_acc after second transformation: {ic_acc}')
+        return ic_acc, (ci_upper >= y).float().mean(), (ci_lower <= y).float().mean()
+
     #def predict(self, val_data):
     """ This function is for using the model to predict the validation data.
         will work on this later but leaving it here for logical structure purposes.
@@ -148,10 +166,14 @@ dataloader_test = DataLoader(dataset_test, batch_size=64, shuffle=False)
 run = runBNN(SimpleFFBNN(input_dim = 4, output_dim =1), dataloader_train, dataloader_test, 1000, 0.001, torch.optim.Adam, nn.MSELoss(), device)
 # train model
 run.train()
-# test model
-run.test()
+# test classification model
+#run.test()
 # visualize loss
 run.visualizeLoss()
+
+# evaluate regression
+ic_acc, upper, lower = run.evaluate_regression()
+print(f'IC Accuracy: {ic_acc.item()}, Upper: {upper.item()}, Lower: {lower.item()}')
 
 
 
