@@ -4,10 +4,12 @@ import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import r2_score
 from torch.utils.data import DataLoader, TensorDataset
 from Utils import custom_data_loader
 import torch.nn as nn
 import torch.optim as optim
+import matplotlib.pyplot as plt
 
 cuda = torch.cuda.is_available()
 print("CUDA Available: ", cuda)
@@ -30,7 +32,7 @@ class runBNN:
     def __init__(self, model, data_train, data_test, epoch, lr, optimizer, criterion, device):
         self.model = model
         self.data_train = data_train
-        self.data_test = DataLoader(data_test, batch_size=64, shuffle=False)
+        self.data_test = data_test
         self.epoch = epoch
         self.lr = lr
         self.optimizer = optimizer
@@ -38,11 +40,13 @@ class runBNN:
         self.device = device
         self.model.to(device)
         self.optimizer = optimizer(self.model.parameters(), lr=lr)
+        self.loss = []
         #self.input_dim = len(data_test) # input_dim but have to think about this
 
     def train(self):
         for i in range(self.epoch):
             self.model.train()
+            epoch_loss = 0
             for X, y in self.data_train:
                 X, y = X.to(self.device), y.to(self.device)
                 self.optimizer.zero_grad()
@@ -50,7 +54,10 @@ class runBNN:
                 loss = self.criterion(output, y)
                 loss.backward()
                 self.optimizer.step()
-            print(f'Epoch {i + 1}, Loss: {loss.item()}')
+                epoch_loss += loss.item() * len(X)
+            self.loss.append(epoch_loss / len(self.data_train.dataset))
+            #print(f'Epoch {i + 1}, Loss: {loss.item()}')
+            print(f'Epoch {i + 1}, Loss: {self.loss[-1]}')
 
     def test(self):
         self.model.eval()
@@ -60,24 +67,37 @@ class runBNN:
             for X, y in self.data_test:
                 X, y = X.to(self.device), y.to(self.device)
                 output = self.model(X)
+                # for classification
                 for idx, i in enumerate(output):
                     if torch.argmax(i) == y[idx]:
                         correct += 1
                     total += 1
             print('Test Accuracy: ', round(correct / total, 3))
 
+    #def predict(self, val_data):
+    """ This function is for using the model to predict the validation data.
+        will work on this later but leaving it here for logical structure purposes.
+    """
+     #   self.model.eval()
+      #  with torch.no_grad():
+       #     val_data = val_data.to(self.device)
+        #    return self.model(val_data)
 
-
+    #def save_model(self, path):
+    """ This function is for saving the model to a file. 
+             Not sure if I will use this but leaving it here for logical structure purposes. 
+    """
+     #   torch.save(self.model.state_dict(), path)
     
-# load data
-#df = pd.read_csv('quality_of_food.csv')
+    def visualizeLoss(self):
+        plt.plot(self.loss)
+        plt.xlabel('Epochs')
+        plt.ylabel('Loss')
+        plt.title('Loss over epochs')
+        plt.show()
 
-# convert 'savings' column to numeric
-#df['savings'] = np.where(df['savings'] == 'low', 0, np.where(df['savings'] == 'medium', 1, 2))
 
-# predictors and target
-#X = df.drop(columns=['quality_of_food'])
-#y = df[['quality_of_food']]
+
 
 df_custom = pd.read_csv('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/Data/quality_of_food.csv')
 
@@ -119,14 +139,21 @@ dataloader_test = DataLoader(dataset_test, batch_size=64, shuffle=False)
 
 
 
-# run the BNN
-regressor = SimpleFFBNN(input_dim = 4, output_dim =1)
-print(regressor)
-optimizer = optim.Adam(regressor.parameters(), lr=0.01)
-#self, model, data_train, data_test, epoch, lr, optimizer, criterion, device
+# create the model
+#regressor = SimpleFFBNN(input_dim = 4, output_dim =1)
+# define optimizer need to clean later
+#optimizer = optim.Adam(regressor.parameters(), lr=0.01)
 
-run = runBNN(regressor, dataloader_train, dataloader_test, 1000, 0.001, torch.optim.Adam, nn.MSELoss(), device)
+# run instance of model class with the following arguments: self, model, data_train, data_test, epoch, lr, optimizer, criterion, device
+run = runBNN(SimpleFFBNN(input_dim = 4, output_dim =1), dataloader_train, dataloader_test, 1000, 0.001, torch.optim.Adam, nn.MSELoss(), device)
+# train model
 run.train()
+# test model
+run.test()
+# visualize loss
+run.visualizeLoss()
+
+
 
 
 """ def evaluate_regression(regressor,
