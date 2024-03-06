@@ -11,9 +11,9 @@ torch.manual_seed(43)
 class SimpleFFBNN(nn.Module):
     def __init__(self, input_dim, output_dim):
         super(SimpleFFBNN, self).__init__()
-        self.fc1 = KlLayers.KlLayers(input_dim, 400)
-        self.fc2 = KlLayers.KlLayers(400, 200)
-        self.fc3 = KlLayers.KlLayers(200, output_dim)
+        self.fc1 = KlLayers.KlLayers(input_dim, 10)
+        self.fc2 = KlLayers.KlLayers(10, 20)
+        self.fc3 = KlLayers.KlLayers(20, output_dim)
 
         self.kl_layers = [self.fc1, self.fc2, self.fc3]
 
