@@ -11,6 +11,7 @@ import torch.nn as nn
 import torch.optim as optim
 import matplotlib.pyplot as plt
 from Models.simpleFFBNN import SimpleFFBNN
+from Models.denseBBBRegression import DenseBBBRegression
 from Models.denseRegression import DenseRegressor
 import argparse
 
@@ -221,6 +222,24 @@ if __name__ == '__main__':
         y_val = next(iter(dataloader_val))[1]
 
         run.visualizePrediction(y_val, pred)
+
+    
+    elif args.model == 'DenseBBBRegression':
+        run = runBNN(DenseBBBRegression(input_dim = 4, output_dim = 1), dataloader_train, dataloader_test, dataloader_val, args.epochs, args.lr, args.optimizer, args.criterion, args.device)
+        run.train()
+        run.test()
+        run.visualizeLoss()
+        ic_acc, upper, lower = run.evaluate_regression(regressor = DenseBBBRegression(input_dim = 4, output_dim =1), data_test = dataloader_test, samples = 100, std_multiplier = 2)
+        print(f'IC Accuracy: {ic_acc.item()}, Upper: {upper.item()}, Lower: {lower.item()}')
+
+        # get the predictions
+        pred = run.predict(dataloader_val)
+
+        # visualize the predictions
+        y_val = next(iter(dataloader_val))[1]
+        run.visualizePrediction(y_val, pred)
+
+        
 
     else:
         run = runBNN(DenseRegressor(input_dim = 4, output_dim = 1), dataloader_train, dataloader_test, dataloader_val, args.epochs, args.lr, args.optimizer, args.criterion, args.device)
