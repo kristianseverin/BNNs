@@ -6,12 +6,13 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import r2_score
 from torch.utils.data import DataLoader, TensorDataset
-from Utils import custom_data_loader
+from Utils import custom_data_loader, preprocess_data
 import torch.nn as nn
 import torch.optim as optim
 import matplotlib.pyplot as plt
 from Models.simpleFFBNN import SimpleFFBNN
-
+from Models.denseRegression import DenseRegressor
+import argparse
 
 cuda = torch.cuda.is_available()
 print("CUDA Available: ", cuda)
@@ -28,10 +29,11 @@ print("Device: ", device)
 
 # a class that runs the BNN
 class runBNN:
-    def __init__(self, model, data_train, data_test, epoch, lr, optimizer, criterion, device):
+    def __init__(self, model, data_train, data_test, data_val, epoch, lr, optimizer, criterion, device):
         self.model = model
         self.data_train = data_train
         self.data_test = data_test
+        self.data_val = data_val
         self.epoch = epoch
         self.lr = lr
         self.optimizer = optimizer
@@ -57,8 +59,7 @@ class runBNN:
                 loss = self.criterion(output, y)
                 loss.backward()
                 self.optimizer.step()
-                train_loss += loss.item()
-                test_loss += loss.item() * len(X)
+                train_loss += loss.item() * len(X)
 
             self.model.eval()
             with torch.no_grad():
@@ -66,14 +67,25 @@ class runBNN:
                     X, y = X.to(self.device), y.to(self.device)
                     output = self.model(X)
                     loss = self.criterion(output, y)
+                    test_loss += loss.item()
+
+            self.model.eval()
+            with torch.no_grad():
+                for X, y in self.data_val:
+                    X, y = X.to(self.device), y.to(self.device)
+                    output = self.model(X)
+                    loss = self.criterion(output, y)
                     val_loss += loss.item()
+
+
+            
             self.trainLoss.append(train_loss / len(self.data_train.dataset))
             self.testLoss.append(test_loss / len(self.data_train.dataset))
             self.valLoss.append(val_loss / len(self.data_train.dataset))
             #print(f'Epoch {i + 1}, Loss: {loss.item()}')
             print(f'Epoch {i + 1}, Train Loss: {self.trainLoss[-1]}, Test Loss: {self.testLoss[-1]}, Val Loss: {self.valLoss[-1]}')
             
-
+    # for classification
     def test(self):
         self.model.eval()
         with torch.no_grad():
@@ -82,23 +94,21 @@ class runBNN:
             for X, y in self.data_test:
                 X, y = X.to(self.device), y.to(self.device)
                 output = self.model(X)
-                # for classification
                 for idx, i in enumerate(output):
                     if torch.argmax(i) == y[idx]:
                         correct += 1
                     total += 1
             print('Test Accuracy: ', round(correct / total, 3))
 
-    def evaluate_regression(self, regressor, X, y, samples = 100, std_multiplier = 2):
+    # for regression
+    def evaluate_regression(self, regressor, data_test, samples = 100, std_multiplier = 2):
         self.model.eval()
         X, y = next(iter(self.data_test))
         X, y = X.to(self.device), y.to(self.device)
         preds = [self.model(X) for i in range(samples)]
         preds = torch.stack(preds)
         means = preds.mean(axis=0)
-        print(f'Means: {means}')
-        stds = preds.std(axis=1)
-        print(f'Stds: {stds}')
+        stds = preds.std(axis=0)
         ci_upper = means + (std_multiplier * stds)
         ci_lower = means - (std_multiplier * stds)
         ic_acc = (ci_lower <= y) * (ci_upper >= y)
@@ -113,110 +123,129 @@ class runBNN:
         """
         self.model.eval()
         with torch.no_grad():
-            val_data = val_data.to(self.device)
-            return self.model(val_data)
-
+            for X, y in val_data:
+                X, y = X.to(self.device), y.to(self.device)
+                output = self.model(X)
+                return output
     
     def visualizeLoss(self):
         #plt.plot(self.loss, label='loss')
-        plt.plot(self.trainLoss, label='train loss')
+        plt.plot(self.testLoss, label='train loss')
         #plt.plot(self.testLoss, label='test loss')
         plt.plot(self.valLoss, label='val loss')
         plt.legend()
         plt.show()
 
     def visualizePrediction(self, y, y_pred):
-        # get them back to original scale
-        y = scaler.inverse_transform(y)
-        y_pred = scaler.inverse_transform(y_pred)
-
         plt.scatter(y, y_pred)
         plt.xlabel('True Values')
         plt.ylabel('Predictions')
         plt.axis('equal')
         plt.axis('square')
-        plt.xlim([0, plt.xlim()[1]])
-        plt.ylim([0, plt.ylim()[1]])
+        plt.title('True vs Predicted values')
+        #plt.xlim([0, plt.xlim()[1]])
+        #plt.ylim([0, plt.ylim()[1]])
         _ = plt.plot([-100, 100], [-100, 100])
         plt.show()
+
+
+
+
+        # get them back to original scale
+        #scaler = StandardScaler()
+        #y = scaler.fit_transform(y)
+        #y_pred = scaler.fit_transform(y_pred)
+        #y = scaler.inverse_transform(y)
+        #y_pred = scaler.inverse_transform(y_pred)
+
+        #plt.scatter(y, y_pred)
+        #plt.xlabel('True Values')
+        #plt.ylabel('Predictions')
+        #plt.axis('equal')
+        #plt.axis('square')
+        #plt.title('True vs Predicted scaled values')
+        #plt.xlim([0, plt.xlim()[1]])
+        #plt.ylim([0, plt.ylim()[1]])
+        #_ = plt.plot([-100, 100], [-100, 100])
+        #plt.show()
 
     
     def save_model(self, path):
         torch.save(self.model.state_dict(), path)
 
-# read data
-df_custom = pd.read_csv('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/Data/quality_of_food.csv')
+# read data and preprocess
+dataloader_train, dataloader_test, dataloader_val = preprocess_data(pd.read_csv('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/Data/quality_of_food.csv'))
 
-# custom data loader
-df_custom = custom_data_loader(df_custom, is_normalize=True)
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Run BNN')
+    parser.add_argument('--model', type=str, help='Model to run')
+    parser.add_argument('--dataloader_train', type=str, help='Dataloader for train')
+    parser.add_argument('--dataloader_test', type=str, help='Dataloader for test')
+    parser.add_argument('--dataloader_val', type=str, help='Dataloader for val')
+    parser.add_argument('--epochs', type=int, help='Number of epochs')
+    parser.add_argument('--lr', type=float, help='Learning rate')
+    parser.add_argument('--optimizer', type=str, help='Optimizer')
+    parser.add_argument('--criterion', type=str, help='Criterion')
+    parser.add_argument('--device', type=str, help='Device')
 
-# scale the data
-scaler = StandardScaler()
+    args = parser.parse_args()
+    print(args.epochs)
+    print(args.model)
+    # run the following command in terminal to run the model:
+    # python runBNN.py --model SimpleFFBNN
+    # run the following command in terminal to run the model with epochs:
+    # python runBNN.py --model SimpleFFBNN --epochs 1000
+    # run the following command in terminal to run the model with all arguments:
+    # python runBNN.py --model SimpleFFBNN --dataloader_train dataloader_train --dataloader_test dataloader_test --epochs 1000 --lr 0.001 --optimizer optim.Adam --criterion nn.MSELoss --device device
 
-# fit transform the data
-X = df_custom.X
-y = df_custom.y
-
-X = scaler.fit_transform(X)
-y = scaler.fit_transform(y.reshape(-1,1))
-
-# split the data
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=43)
-
-X_train, y_train = torch.FloatTensor(X_train), torch.FloatTensor(y_train)
-X_test, y_test = torch.FloatTensor(X_test), torch.FloatTensor(y_test)
-
-# split into validation and test
-X_val, X_test, y_val, y_test = train_test_split(X_test, y_test, test_size=0.5, random_state=43)
-
-# create dataloaders
-dataset_train = TensorDataset(X_train, y_train)
-dataset_test = TensorDataset(X_test, y_test)
-dataset_val = TensorDataset(X_val, y_val)
-
-dataloader_train = DataLoader(dataset_train, batch_size=64, shuffle=True)
-dataloader_test = DataLoader(dataset_test, batch_size=64, shuffle=False)
-dataloader_val = DataLoader(dataset_val, batch_size=64, shuffle=False)
-
-# create the model
-#regressor = SimpleFFBNN(input_dim = 4, output_dim =1)
-# define optimizer need to clean later
-#optimizer = optim.Adam(regressor.parameters(), lr=0.01)
-
-# run instance of model class with the following arguments: self, model, data_train, data_test, epoch, lr, optimizer, criterion, device
-run = runBNN(SimpleFFBNN(input_dim = 4, output_dim =1), dataloader_train, dataloader_test, 1000, 0.001, torch.optim.Adam, nn.MSELoss(), device)
-# train model
-run.train()
-
-# test classification model
-#run.test()
-
-# visualize loss
-run.visualizeLoss()
-
-# evaluate regression
-ic_acc, upper, lower = run.evaluate_regression(regressor = SimpleFFBNN(input_dim = 4, output_dim =1), X = X_val, y = y_val, samples = 100, std_multiplier = 2)
-print(f'IC Accuracy: {ic_acc.item()}, Upper: {upper.item()}, Lower: {lower.item()}')
+    
+    # stochastic gradient descent
+    args.optimizer = optim.SGD
+    args.criterion = nn.MSELoss
 
 
-# predict
-pred = run.predict(X_val)
+    if args.model == 'SimpleFFBNN':
+        run = runBNN(SimpleFFBNN(input_dim = 4, output_dim = 1), dataloader_train, dataloader_test, dataloader_val, args.epochs, args.lr, args.optimizer, args.criterion, args.device)
+        run.train()
+        run.test()
+        run.visualizeLoss()
+        ic_acc, upper, lower = run.evaluate_regression(regressor = SimpleFFBNN(input_dim = 4, output_dim =1), data_test = dataloader_test, samples = 100, std_multiplier = 2)
+        print(f'IC Accuracy: {ic_acc.item()}, Upper: {upper.item()}, Lower: {lower.item()}')
+        
 
-# visualize prediction
-run.visualizePrediction(y_val, pred)
+        # get the predictions
+        pred = run.predict(dataloader_val)
+        
+        # visualize the predictions
+
+        y_val = next(iter(dataloader_val))[1]
+
+        run.visualizePrediction(y_val, pred)
+
+    else:
+        run = runBNN(DenseRegressor(input_dim = 4, output_dim = 1), dataloader_train, dataloader_test, dataloader_val, args.epochs, args.lr, args.optimizer, args.criterion, args.device)
+        run.train()
+        run.test()
+        run.visualizeLoss()
+        ic_acc, upper, lower = run.evaluate_regression(regressor = DenseRegressor(input_dim = 4, output_dim =1), data_test = dataloader_test, samples = 100, std_multiplier = 2)
+        print(f'IC Accuracy: {ic_acc.item()}, Upper: {upper.item()}, Lower: {lower.item()}')
+
+        # get the predictions
+        pred = run.predict(dataloader_val)
+
+        # visualize the predictions
+        y_val = next(iter(dataloader_val))[1]
+        run.visualizePrediction(y_val, pred)
+    
+    
+        
+        #run.save_model('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/trainedModels/FFBNN.pth')
+        #exit()
 
 
+    #pred = run.predict(X_val)
+    #run.visualizePrediction(y_val, pred)
+    #run.save_model('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/trainedModels/FFBNN.pth')
+    #exit()
 
-# save model
-run.save_model('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/trainedModels/FFBNN.pth')
-
-
-
-
-
-#ic_acc, upper, lower = run.evaluate_regression()
-#print(f'IC Accuracy: {ic_acc.item()}, Upper: {upper.item()}, Lower: {lower.item()}')
-
-# predict
-#pred = run.predict(X_val)
-
+# run the following command in terminal to run the model:

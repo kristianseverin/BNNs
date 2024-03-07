@@ -1,6 +1,10 @@
 import torch
 import pandas as pd
 import numpy as np
+from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import train_test_split
+from torch.utils.data import DataLoader, TensorDataset
+
 
 class custom_data_loader(torch.utils.data.Dataset):
 
@@ -26,3 +30,24 @@ class custom_data_loader(torch.utils.data.Dataset):
 
   def __len__(self):
     return len(self.X)
+
+# a function that preprocesses the data
+def preprocess_data(df):
+    df_custom = pd.read_csv('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/Data/quality_of_food.csv')
+    df_custom = custom_data_loader(df_custom, is_normalize=True)
+    scaler = StandardScaler()
+    X = df_custom.X
+    y = df_custom.y
+    X = scaler.fit_transform(X)
+    y = scaler.fit_transform(y.reshape(-1,1))
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=43)
+    X_train, y_train = torch.FloatTensor(X_train), torch.FloatTensor(y_train)
+    X_test, y_test = torch.FloatTensor(X_test), torch.FloatTensor(y_test)
+    X_val, X_test, y_val, y_test = train_test_split(X_test, y_test, test_size=0.5, random_state=43)
+    dataset_train = TensorDataset(X_train, y_train)
+    dataset_test = TensorDataset(X_test, y_test)
+    dataset_val = TensorDataset(X_val, y_val)
+    dataloader_train = DataLoader(dataset_train, batch_size=64, shuffle=True)
+    dataloader_test = DataLoader(dataset_test, batch_size=64, shuffle=False)
+    dataloader_val = DataLoader(dataset_val, batch_size=64, shuffle=False)
+    return dataloader_train, dataloader_test, dataloader_val
