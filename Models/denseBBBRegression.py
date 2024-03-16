@@ -29,10 +29,4 @@ class DenseBBBRegression(nn.Module):
         x = self.fc3(x)
         return x
 
-    def kl_divergence(self):
-        KLD = 0
-        for layer in self.klList:
-            KLD += layer.kl_divergence()
-        return KLD
-
 

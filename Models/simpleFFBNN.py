@@ -29,4 +29,4 @@ class SimpleFFBNN(nn.Module):
         for layer in self.kl_layers:
             kl += layer.kl_divergence()
         return kl
-        
+    

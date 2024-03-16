@@ -104,20 +104,19 @@ class runBNN:
 
     # for regression
     def evaluate_regression(self, regressor, X, y, data_test, samples = 100, std_multiplier = 2):
-        #self.model.eval()
-        #X, y = next(iter(self.data_test))
-        #X, y = X.to(self.device), y.to(self.device)
+        self.model.eval()
+        X, y = next(iter(self.data_test))
+        X, y = X.to(self.device), y.to(self.device)
         preds = [self.model(X) for i in range(samples)]
         preds = torch.stack(preds)
+        RMSE = torch.sqrt(((preds.mean(axis=0) - y) ** 2).mean())
         means = preds.mean(axis=0)
         stds = preds.std(axis=0)
         ci_upper = means + (std_multiplier * stds)
         ci_lower = means - (std_multiplier * stds)
-
         ic_acc = (ci_lower <= y) * (ci_upper >= y)
-        #ic_acc = (ci_lower <= y) * (ci_upper >= y)
         ic_acc = ic_acc.float().mean()
-        return ic_acc, (ci_upper >= y).float().mean(), (ci_lower <= y).float().mean(), ci_upper, ci_lower
+        return ic_acc, (ci_upper >= y).float().mean(), (ci_lower <= y).float().mean(), ci_upper, ci_lower, RMSE
         
 
 
@@ -153,20 +152,13 @@ class runBNN:
         plt.show()
 
     def visualizeMetrics(self, ci_lower, ci_upper, y, y_pred):
-        #plt.scatter(y, y_pred)
-        #plt.xlabel('True Values')
-        #plt.ylabel('Predictions')
-        #plt.title('True vs Predicted values')
-        #_ = plt.plot([-3, 5], [-3, 5])
-
         # make a density plot
-
         ci_upper = ci_upper.detach().numpy()
         ci_lower = ci_lower.detach().numpy()
-        #sns.distplot(y, hist = False, kde = True, kde_kws = {'shade': True, 'linewidth': 3}, label = 'True Values')
-        #sns.distplot(y_pred, hist = False, kde = True, kde_kws = {'shade': True, 'linewidth': 3}, label = 'Predicted Values')
-        sns.distplot(ci_upper, hist = False, kde = True, kde_kws = {'shade': True, 'linewidth': 3}, label = 'CI Upper')
-        sns.distplot(ci_lower, hist = False, kde = True, kde_kws = {'shade': True, 'linewidth': 3}, label = 'CI Lower')
+        sns.distplot(y, hist = False, kde = True, kde_kws = {'shade': True, 'linewidth': 3}, label = 'True Values')
+        sns.distplot(y_pred, hist = False, kde = True, kde_kws = {'shade': True, 'linewidth': 3}, label = 'Predicted Values')
+        #sns.distplot(ci_upper, hist = False, kde = True, kde_kws = {'shade': True, 'linewidth': 3}, label = 'CI Upper')
+        #sns.distplot(ci_lower, hist = False, kde = True, kde_kws = {'shade': True, 'linewidth': 3}, label = 'CI Lower')
         plt.xlabel('Values')
         plt.ylabel('Density')
         plt.title('True vs Predicted values')
@@ -193,8 +185,6 @@ if __name__ == '__main__':
     parser.add_argument('--device', type=str, help='Device')
 
     args = parser.parse_args()
-    print(args.epochs)
-    print(args.model)
     # run the following command in terminal to run the model:
     # python runBNN.py --model SimpleFFBNN
     # run the following command in terminal to run the model with epochs:
@@ -213,16 +203,9 @@ if __name__ == '__main__':
         run.train()
         run.test()
         run.visualizeLoss()
-        ic_acc, upper, lower, ci_upper, ci_lower = run.evaluate_regression(regressor = SimpleFFBNN(input_dim = 4, output_dim =1), X = next(iter(dataloader_test))[0], y = next(iter(dataloader_test))[1], data_test = dataloader_test, samples = 100, std_multiplier = 2)
-        print(f'IC Accuracy: {ic_acc.item()}, Upper: {upper.item()}, Lower: {lower.item()}, CI Upper: {ci_upper}, CI Lower: {ci_lower}')
-
-        # 
-        #ci_upper = ci_upper.detach().numpy()
-        #ci_lower = ci_lower.detach().numpy()
+        ic_acc, upper, lower, ci_upper, ci_lower, RMSE = run.evaluate_regression(regressor = SimpleFFBNN(input_dim = 4, output_dim =1), X = next(iter(dataloader_test))[0], y = next(iter(dataloader_test))[1], data_test = dataloader_test, samples = 100, std_multiplier = 2)
+        print(f'IC Accuracy: {ic_acc.item()}, Upper: {upper.item()}, Lower: {lower.item()}, RMSE = {RMSE}')
     
-
-        
-
         # get the predictions
         pred = run.predict(dataloader_val)
         
@@ -234,7 +217,7 @@ if __name__ == '__main__':
 
         run.visualizeMetrics(ci_lower, ci_upper, y_val, pred)
 
-        # get kl divergence'
+        # get kl divergence
         kl = run.model.kl_divergence()
         print(f'KL Divergence: {kl}')
     
@@ -243,8 +226,8 @@ if __name__ == '__main__':
         run.train()
         run.test()
         run.visualizeLoss()
-        ic_acc, upper, lower = run.evaluate_regression(regressor = DenseBBBRegression(input_dim = 4, output_dim =1), data_test = dataloader_test, samples = 100, std_multiplier = 2)
-        print(f'IC Accuracy: {ic_acc.item()}, Upper: {upper.item()}, Lower: {lower.item()}')
+        ic_acc, upper, lower, ci_upper, ci_lower, RMSE = run.evaluate_regression(regressor = DenseBBBRegression(input_dim = 4, output_dim =1), X = next(iter(dataloader_test))[0], y = next(iter(dataloader_test))[1], data_test = dataloader_test, samples = 100, std_multiplier = 2)
+        print(f'IC Accuracy: {ic_acc.item()}, Upper: {upper.item()}, Lower: {lower.item()}, RMSE: {RMSE}')
 
         # get the predictions
         pred = run.predict(dataloader_val)
@@ -252,6 +235,8 @@ if __name__ == '__main__':
         # visualize the predictions
         y_val = next(iter(dataloader_val))[1]
         run.visualizePrediction(y_val, pred)
+
+        run.visualizeMetrics(ci_lower, ci_upper, y_val, pred)
 
         
 
@@ -260,8 +245,8 @@ if __name__ == '__main__':
         run.train()
         run.test()
         run.visualizeLoss()
-        ic_acc, upper, lower = run.evaluate_regression(regressor = DenseRegressor(input_dim = 4, output_dim =1), data_test = dataloader_test, samples = 100, std_multiplier = 2)
-        print(f'IC Accuracy: {ic_acc.item()}, Upper: {upper.item()}, Lower: {lower.item()}')
+        ic_acc, upper, lower, ci_upper, ci_lower, RMSE = run.evaluate_regression(regressor = DenseRegressor(input_dim = 4, output_dim =1), X = next(iter(dataloader_test))[0], y = next(iter(dataloader_test))[1], data_test = dataloader_test, samples = 100, std_multiplier = 2)
+        print(f'IC Accuracy: {ic_acc.item()}, Upper: {upper.item()}, Lower: {lower.item()}, RMSE: {RMSE}')
 
         # get the predictions
         pred = run.predict(dataloader_val)
@@ -269,6 +254,12 @@ if __name__ == '__main__':
         # visualize the predictions
         y_val = next(iter(dataloader_val))[1]
         run.visualizePrediction(y_val, pred)
+
+        run.visualizeMetrics(ci_lower, ci_upper, y_val, pred)
+
+        # get the KL divergence
+        kl = run.model.kl_divergence()
+        print(f'KL Divergence: {kl}')
     
     
         
