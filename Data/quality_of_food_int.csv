@@ -1,4 +1,4 @@
-quality_of_food,monthly_income,time_of_month,savings,guests
+target,monthly_income,time_of_month,savings,guests
 1,3915,21,medium,0
 2,3254,10,high,0
 3,5079,12,medium,0
