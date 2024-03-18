@@ -8,19 +8,23 @@ from blitz.utils import variational_estimator
 torch.manual_seed(43)
 
 @variational_estimator
-class SimpleFFBNNClassification(nn.Module):
+class LargeFFBNNClassification(nn.Module):
     def __init__(self, input_dim, output_dim):
-        super(SimpleFFBNNClassification, self).__init__()
-        self.fc1 = KlLayers.KlLayers(input_dim, 10)
-        self.fc2 = KlLayers.KlLayers(10, 20)
-        self.fc3 = KlLayers.KlLayers(20, output_dim)
+        super(LargeFFBNNClassification, self).__init__()
+        self.fc1 = KlLayers.KlLayers(input_dim, 528)
+        self.fc2 = KlLayers.KlLayers(528, 256)
+        self.fc3 = KlLayers.KlLayers(256, 128)
+        self.fc4 = KlLayers.KlLayers(128, 64)
+        self.fc5 = KlLayers.KlLayers(64, output_dim)
 
-        self.kl_layers = [self.fc1, self.fc2, self.fc3]
+        self.kl_layers = [self.fc1, self.fc2, self.fc3, self.fc4, self.fc5]
 
     def forward(self, x):
         x = F.relu(self.fc1(x))
-        x = F.softmax(self.fc2(x), dim = 1)
-        x = self.fc3(x)
+        x = F.relu(self.fc2(x))
+        x = F.relu(self.fc3(x))
+        x = F.softmax(self.fc4(x), dim = 1)
+        x = self.fc5(x)
         return x
     
     def kl_divergence(self):

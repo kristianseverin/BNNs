@@ -92,7 +92,7 @@ def preprocess_classification_data(df):
     return y
   y = make_zero_based(y)
 
-  X = scaler.fit_transform(X)
+  #X = scaler.fit_transform(X)
   #y = scaler.fit_transform(y.reshape(-1,1))
   X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=43)
   X_train, y_train = torch.FloatTensor(X_train), torch.LongTensor(y_train)
