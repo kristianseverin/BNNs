@@ -36,12 +36,6 @@ def arg_inputs():
                         type=str,
                         default="nn.CrossEntropyLoss()")
 
-    parser.add_argument("--savemodel", 
-                        "-s",
-                        help="Save the model",
-                        type=bool,
-                        default=False)
-
 
    # parse the arguments
     args = parser.parse_args()
@@ -69,11 +63,14 @@ device = get_device()
 
 # read data and preprocess
 df = pd.read_csv('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/Data/quality_of_food_int.csv')
+print(df.head())
+print(df.info())
 dataloader_train, dataloader_test, dataloader_val = preprocess_classification_data(df)
+
 
 # define the model
 class runBNNClassification:
-    def __init__(self, model, dataloader_train, dataloader_test, dataloader_val, device, epochs, lr, criterion, optimize, savemodel):
+    def __init__(self, model, dataloader_train, dataloader_test, dataloader_val, device, epochs, lr, criterion, optimizer):
         self.model = model
         self.dataloader_train = dataloader_train
         self.dataloader_test = dataloader_test
@@ -87,7 +84,6 @@ class runBNNClassification:
         self.test_loss = []
         self.val_loss = []
         self.accuracy = []
-        self.savemodel = savemodel
         
 
     def train(self):
@@ -169,11 +165,8 @@ class runBNNClassification:
         for i in range(len(uncertainty)):
             uncertainty[i] = torch.nn.functional.softmax(uncertainty[i], dim=1)
 
-        return uncertainty
 
-    def save_model(self, path):
-        torch.save(self.model.state_dict(), path)
-        
+        return uncertainty
 
     
 def main():
@@ -181,20 +174,14 @@ def main():
 
     if args.model == "SimpleFFBNNClassification":
         model = SimpleFFBNNClassification(4, 5)
-        run = runBNNClassification(model, dataloader_train, dataloader_test, dataloader_val, device, args.epochs, args.lr, args.criterion, torch.optim.Adam, args.savemodel)
+        run = runBNNClassification(model, dataloader_train, dataloader_test, dataloader_val, device, args.epochs, args.lr, args.criterion, torch.optim.Adam)
         run.train()
         run.visualizeLoss()
         uncertainty_simple_model = run.get_uncertainty()
-        for i in range(len(uncertainty_simple_model)):
-            for j in range(len(uncertainty_simple_model[i])):
-                print(f'Max Uncertainty: {torch.max(uncertainty_simple_model[i][j])}')
-
-        if args.savemodel:
-            run.save_model('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/trainedModels/simple_model.pth')
 
     else:
         model = LargeFFBNNClassification(4, 5)
-        run = runBNNClassification(model, dataloader_train, dataloader_test, dataloader_val, device, args.epochs, args.lr, args.criterion, torch.optim.Adam, args.save_model)
+        run = runBNNClassification(model, dataloader_train, dataloader_test, dataloader_val, device, args.epochs, args.lr, args.criterion, torch.optim.Adam)
         run.train()
         run.visualizeLoss()
         
