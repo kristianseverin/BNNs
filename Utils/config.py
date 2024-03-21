@@ -107,7 +107,7 @@ def preprocess_classification_data(df):
   return dataloader_train, dataloader_test, dataloader_val
 
 
-  def preprocess_classification_activeL_data(df):
+def preprocess_classification_activeL_data(df):
     df_custom = pd.read_csv('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/Data/quality_of_food_int.csv')
     df_custom = custom_data_loader_classification(df_custom, is_normalize=True)
     scaler = StandardScaler()
@@ -131,4 +131,3 @@ def preprocess_classification_data(df):
     dataloader_train = DataLoader(dataset_train, batch_size=64, shuffle=True)
     dataloader_test = DataLoader(dataset_test, batch_size=64, shuffle=False)
     return dataloader_train, dataloader_test
-    
