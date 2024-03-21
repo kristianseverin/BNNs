@@ -105,3 +105,30 @@ def preprocess_classification_data(df):
   dataloader_test = DataLoader(dataset_test, batch_size=64, shuffle=False)
   dataloader_val = DataLoader(dataset_val, batch_size=64, shuffle=False)
   return dataloader_train, dataloader_test, dataloader_val
+
+
+  def preprocess_classification_activeL_data(df):
+    df_custom = pd.read_csv('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/Data/quality_of_food_int.csv')
+    df_custom = custom_data_loader_classification(df_custom, is_normalize=True)
+    scaler = StandardScaler()
+    X = df_custom.X
+    y = df_custom.y
+
+    def make_zero_based(y):
+      """Zero base the target variable"""
+      for i in range(len(y)):
+        y[i] = y[i] - 1
+      return y
+    y = make_zero_based(y)
+
+    #X = scaler.fit_transform(X)
+    #y = scaler.fit_transform(y.reshape(-1,1))
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=43)
+    X_train, y_train = torch.FloatTensor(X_train), torch.LongTensor(y_train)
+    X_test, y_test = torch.FloatTensor(X_test), torch.LongTensor(y_test)
+    dataset_train = TensorDataset(X_train, y_train)
+    dataset_test = TensorDataset(X_test, y_test)
+    dataloader_train = DataLoader(dataset_train, batch_size=64, shuffle=True)
+    dataloader_test = DataLoader(dataset_test, batch_size=64, shuffle=False)
+    return dataloader_train, dataloader_test
+    

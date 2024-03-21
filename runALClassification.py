@@ -5,7 +5,7 @@ import numpy as np
 import GPUtil
 import argparse
 import matplotlib.pyplot as plt
-from Utils import custom_data_loader_classification, preprocess_classification_data
+from Utils import custom_data_loader_classification, preprocess_classification_data, preprocess_classification_activeL_data
 from Utils import preprocess_classification_data
 from Models.largeFFBNNClassification import LargeFFBNNClassification
 from Models.simpleFFBNNClassification import SimpleFFBNNClassification
@@ -46,7 +46,7 @@ def trainSeedModel():
     run = runBNNClassification(model, dataloader_train, dataloader_test, dataloader_val, device, 350, 0.0001, torch.nn.CrossEntropyLoss(), torch.optim.SGD, False)
 
     # train the model
-    run.train()
+    test_loss_seed, val_loss_seed, accuracy_seed = run.train()
 
     # visualize the loss
     run.visualizeLoss()
@@ -54,10 +54,7 @@ def trainSeedModel():
     # save the model
     torch.save(model, '/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/Activelearning/SeedModels/simple_model.pth')
 
-    # load the model
-    model = torch.load('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/Activelearning/SeedModels/simple_model.pth')
-    
-    return model
+    return test_loss_seed, val_loss_seed, accuracy_seed
 
 def activeLearning():
     '''This function implements the active learning process. The function uses the seed model to predict the target values of the samples with the highest uncertainty.
@@ -72,7 +69,7 @@ def activeLearning():
     try:
         model = torch.load('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/Activelearning/SeedModels/simple_model.pth')
     except:
-        model = trainSeedModel()
+        test_loss_seed, val_loss_seed, accuracy_seed = trainSeedModel()
     
     # read data
     df = pd.read_csv('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/Activelearning/Data/df_active.csv')
@@ -81,7 +78,9 @@ def activeLearning():
     device = get_device()
 
     # preprocess data
-    dataloader_train, dataloader_test, dataloader_val = preprocess_classification_data(df)
+    dataloader_train, dataloader_test = preprocess_classification_activeL_data(df)
+
+    # split the 
 
     # load the seed model
     model = torch.load('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/Activelearning/SeedModels/simple_model.pth')
@@ -186,8 +185,23 @@ def activeLearning():
     # add the samples with the highest uncertainty to the training set
     df = pd.read_csv('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/Activelearning/Data/df.csv')
     df = pd.concat([df, df_entropy], ignore_index=True)
-    
 
+    return test_loss_seed, val_loss_seed, accuracy_seed
+
+    def testModel():
+        '''This function tests the model on the test set. 
+        it also compares the accuracy of the seed model with the accuracy of the model after the active learning process.'''
+
+        # get accuracy of seed model
+        test_loss_seed, val_loss_seed, accuracy_seed = trainSeedModel()
+
+        # get accuracy of model after active learning
+        test_loss, val_loss, accuracy = activeLearning()
+
+        print(f'Accuracy seed model: {accuracy_seed}')
+        print(f'Accuracy model after active learning: {accuracy}')
+
+        
 def main():
     args = arg_inputs()
     device = get_device()

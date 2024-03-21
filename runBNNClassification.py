@@ -135,11 +135,15 @@ class runBNNClassification:
                     val_loss += loss.item()
             print(f'Epoch: {epoch}, Val Loss: {val_loss}')
             print(f'Accuracy: {100 * correct / total}')
+            
+            
             self.test_loss.append(test_loss)
             self.val_loss.append(val_loss)
             self.accuracy.append(100 * correct / total)
 
         print('Finished Training')
+
+        return self.test_loss, self.val_loss, self.accuracy
 
    
     def visualizeLoss(self):
