@@ -43,7 +43,7 @@ def trainSeedModel():
 
     # define the model
     model = SimpleFFBNNClassification(4, 5)
-    run = runBNNClassification(model, dataloader_train, dataloader_test, dataloader_val, device, 30, 0.0001, torch.nn.CrossEntropyLoss(), torch.optim.SGD, False)
+    run = runBNNClassification(model, dataloader_train, dataloader_test, dataloader_val, device, 450, 0.0001, torch.nn.CrossEntropyLoss(), torch.optim.SGD, False)
 
     # train the model
     test_loss_seed, val_loss_seed, accuracy_seed = run.train()
@@ -80,8 +80,8 @@ def activeLearning(max_rounds = 4):
     # preprocess data
     dataloader_train, dataloader_test = preprocess_classification_activeL_data(df)
     
-    for i in range(max_rounds):
-        print(f'Round: {i}')
+    for r in range(max_rounds):
+        print(f'Round: {r}')
 
         # if a simple_model_best.pth exists, load it, else load the simple_model.pth
         try :
@@ -114,11 +114,7 @@ def activeLearning(max_rounds = 4):
             uncertainty (list): A list of tensors with the model predictions as probabilities.
             '''
             uncertainty = torch.cat(uncertainty, dim=0)
-            print(f'Uncertainty: {uncertainty}')
-            print(f'Uncertainty shape: {uncertainty.shape}')
             entropy = Categorical(probs=uncertainty).entropy()
-            print(f'Entropy: {entropy}')
-            print(f'Entropy shape: {entropy.shape}')
 
             #entropy = uncertainty.entropy()
             variation_ratio = 1 - torch.max(uncertainty, dim=1).values
@@ -130,10 +126,14 @@ def activeLearning(max_rounds = 4):
         # get the indices of the samples with the highest uncertainty
         n = 100
         indices_entropy = np.argsort(entropy)[:n]
-        print(f'indices_entropy: {indices_entropy}')
         indices_variation_ratio = np.argsort(variation_ratio)[:n]
 
+        try:
+            df = pd.read_csv('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/Activelearning/Data/df_new_active.csv')
+        except:
+            df = pd.read_csv('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/Activelearning/Data/df_active.csv')
         print(f'df: {df}')
+        print(f'df info: {df.info()}')
 
         # get the samples with the highest uncertainty
         df_entropy = df.iloc[indices_entropy]
@@ -197,6 +197,20 @@ def activeLearning(max_rounds = 4):
         # save the new training set
         df.to_csv('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/Activelearning/Data/df.csv', index = False)
 
+        # save the new active set without the 100 samples with the highest uncertainty
+        try:
+            df_new_active = pd.read_csv('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/Activelearning/Data/df_new_active.csv')
+        except:
+            df_new_active = pd.read_csv('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/Activelearning/Data/df_active.csv')
+        print(f'df_new_active: {df_new_active}')
+        
+        df_new_active_iloc = df_new_active.iloc[indices_entropy]
+        df_new_active = df_new_active.drop(df_new_active_iloc.index)
+
+
+        print(f'df_new_active after: {df_new_active}')
+        df_new_active.to_csv('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/Activelearning/Data/df_new_active.csv', index = False)
+
 
         def trainNewModel():
             '''This function trains the model on the new training set that includes the samples with the highest uncertainty. 
@@ -213,7 +227,7 @@ def activeLearning(max_rounds = 4):
             dataloader_train_new, dataloader_test_new, dataloader_val_new = preprocess_classification_data(df)
 
             # finetune the model with the new data
-            run = runBNNClassification(model, dataloader_train_new, dataloader_test_new, dataloader_val_new, device, 30, 0.0001, torch.nn.CrossEntropyLoss(), torch.optim.SGD, False)
+            run = runBNNClassification(model, dataloader_train_new, dataloader_test_new, dataloader_val_new, device, 150, 0.0001, torch.nn.CrossEntropyLoss(), torch.optim.SGD, False)
 
             # train the model
             test_loss_new, val_loss_new, accuracy_new = run.train()
@@ -288,7 +302,12 @@ def main():
     activeLearning()
 
     # print the accuracy of the seed model (the accuracy for the new model is printed in the trainNewModel function nested in the activeLearning function)
-    print(f'Accuracy seed model: {accuracy_seed[-1]}')
+    
+    # while accuracy_seed is defined print it
+    #while accuracy_seed is not None:
+     #   print(f'Accuracy seed model: {accuracy_seed[-1]}')
+      #  break
+
 
     # these are the arguments that are used to train the model
     print(f'args: {args}')
