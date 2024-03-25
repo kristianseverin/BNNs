@@ -177,8 +177,6 @@ class runBNNClassification:
 
     def save_model(self, path):
         torch.save(self.model.state_dict(), path)
-        
-
     
 def main():
     args = arg_inputs()

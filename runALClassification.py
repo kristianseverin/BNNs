@@ -56,7 +56,7 @@ def trainSeedModel():
 
     return test_loss_seed, val_loss_seed, accuracy_seed
 
-def activeLearning(max_rounds = 4):
+def activeLearning(max_rounds = 10):
     '''This function implements the active learning process. The function uses the seed model to predict the target values of the samples with the highest uncertainty.
        The function then simulates the target values for the samples with the highest uncertainty using the same logic that was used, when the data was generated in the first place AKA the oracle.
        The function then adds the samples with the highest uncertainty to the training set and retrains the model. The process is repeated until the model has been trained on all the data.
@@ -80,6 +80,11 @@ def activeLearning(max_rounds = 4):
     # preprocess data
     dataloader_train, dataloader_test = preprocess_classification_activeL_data(df)
     
+    # learning curves for the active learning process are saved in these lists for visualization
+    accuracy_curves = []
+    train_loss_curves = []
+    test_loss_curves = []
+    # loop through the active learning process (process is stopped if the new model is not better than the seed model)
     for r in range(max_rounds):
         print(f'Round: {r}')
 
@@ -104,7 +109,6 @@ def activeLearning(max_rounds = 4):
         # get the uncertainty
         for i in range(len(uncertainty)):
             uncertainty[i] = torch.nn.functional.softmax(uncertainty[i], dim=1)
-
         
         def acquisitionFunction(uncertainty):
             '''This function calculates the entropy and variation ratio of the model predictions.
@@ -120,7 +124,7 @@ def activeLearning(max_rounds = 4):
             variation_ratio = 1 - torch.max(uncertainty, dim=1).values
             return entropy, variation_ratio
             
-
+        # get the uncertainty of the model predictions using the acquisition function    
         entropy, variation_ratio = acquisitionFunction(uncertainty)
 
         # get the indices of the samples with the highest uncertainty
@@ -132,12 +136,9 @@ def activeLearning(max_rounds = 4):
             df = pd.read_csv('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/Activelearning/Data/df_new_active.csv')
         except:
             df = pd.read_csv('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/Activelearning/Data/df_active.csv')
-        print(f'df: {df}')
-        print(f'df info: {df.info()}')
 
         # get the samples with the highest uncertainty
         df_entropy = df.iloc[indices_entropy]
-        print(f'df_entropy: {df_entropy}')
         df_variation_ratio = df.iloc[indices_variation_ratio]
 
         def simulateOracle(df):
@@ -162,7 +163,6 @@ def activeLearning(max_rounds = 4):
                 np.where(income >= 2000, 2, 1)))
                 )
 
-
             # Determine quality based on time of month
             quality_based_on_time = np.where(time >= 16, 1, 5)
 
@@ -186,9 +186,8 @@ def activeLearning(max_rounds = 4):
             
             return df
 
+        # simulate the target values for the samples with the highest uncertainty
         df_entropy = simulateOracle(df_entropy)
-        print(f'df_entropy: {df_entropy}')
-        print(f'unique values: {df_entropy["target"].unique()}')    
 
         # add the samples with the highest uncertainty to the training set
         df = pd.read_csv('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/Activelearning/Data/df.csv')
@@ -202,15 +201,11 @@ def activeLearning(max_rounds = 4):
             df_new_active = pd.read_csv('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/Activelearning/Data/df_new_active.csv')
         except:
             df_new_active = pd.read_csv('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/Activelearning/Data/df_active.csv')
-        print(f'df_new_active: {df_new_active}')
         
+        # remove the samples with the highest uncertainty from the active set because they have been added to the training set
         df_new_active_iloc = df_new_active.iloc[indices_entropy]
         df_new_active = df_new_active.drop(df_new_active_iloc.index)
-
-
-        print(f'df_new_active after: {df_new_active}')
         df_new_active.to_csv('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/Activelearning/Data/df_new_active.csv', index = False)
-
 
         def trainNewModel():
             '''This function trains the model on the new training set that includes the samples with the highest uncertainty. 
@@ -221,13 +216,11 @@ def activeLearning(max_rounds = 4):
             except:
                 model = torch.load('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/Activelearning/SeedModels/simple_model.pth')
 
-            print(f'this is the new df: {df}')
-
             # preprocess data
             dataloader_train_new, dataloader_test_new, dataloader_val_new = preprocess_classification_data(df)
 
             # finetune the model with the new data
-            run = runBNNClassification(model, dataloader_train_new, dataloader_test_new, dataloader_val_new, device, 150, 0.0001, torch.nn.CrossEntropyLoss(), torch.optim.SGD, False)
+            run = runBNNClassification(model, dataloader_train_new, dataloader_test_new, dataloader_val_new, device, 450, 0.0001, torch.nn.CrossEntropyLoss(), torch.optim.SGD, False)
 
             # train the model
             test_loss_new, val_loss_new, accuracy_new = run.train()
@@ -238,10 +231,16 @@ def activeLearning(max_rounds = 4):
             # save the model
             torch.save(model, '/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/Activelearning/SeedModels/simple_model_AL.pth')
 
-            print(f'Accuracy new model: {accuracy_new[-1]}')
+            return test_loss_new, val_loss_new, accuracy_new
 
-        # train the new model after the active learning process
-        trainNewModel()
+            #print(f'Accuracy new model: {accuracy_new[-1]}')
+
+        # train the new model after the active learning process and append the learning curves to lists
+        test_loss_new, val_loss_new, accuracy_new = trainNewModel()
+        accuracy_curves.append(accuracy_new)
+        print(f'Accuracy Curves: {accuracy_curves}')
+        train_loss_curves.append(test_loss_new)
+        test_loss_curves.append(val_loss_new)
 
         def compareModels():
             '''This function compares the accuracy of the seed model with the accuracy of the model after the active learning process.'''
@@ -290,30 +289,35 @@ def activeLearning(max_rounds = 4):
                 print('The new model is better than the seed model.')
                 torch.save(model_new, '/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/Activelearning/SeedModels/simple_model_best.pth')
 
-        compareModels()        
+            return accuracy_new, accuracy_seed
+
+        # compare the models
+        accuracy_new[r], accuracy_seed[r] = compareModels()
+
+        # if the new model is not better than the seed twice in a row, break the loop
+        if accuracy_new[r] < accuracy_seed[r] and accuracy_new[r-1] < accuracy_seed[r-1]:
+            print('The new model has not improved the seed model two rounds in a row, so the active learning process is stopped.')
+            break
+
+    return accuracy_curves, train_loss_curves, test_loss_curves, accuracy_seed
         
 def main():
     args = arg_inputs()
     device = get_device()
 
-    # train the seed model
-    #test_loss_seed, val_loss_seed, accuracy_seed = trainSeedModel()
-    # train the model on the new data
-    activeLearning()
+    # train the model on the new data and get the learning curves
+    accuracy_curves, train_loss_curves, test_loss_curves, accuracy_curve_seed = activeLearning()
 
-    # print the accuracy of the seed model (the accuracy for the new model is printed in the trainNewModel function nested in the activeLearning function)
-    
-    # while accuracy_seed is defined print it
-    #while accuracy_seed is not None:
-     #   print(f'Accuracy seed model: {accuracy_seed[-1]}')
-      #  break
-
+    # save the learning curves
+    np.save('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/ThesisPlots/LearningCurves/accuracy_curves.npy', accuracy_curves)
+    np.save('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/ThesisPlots/LearningCurves/train_loss_curves.npy', train_loss_curves)
+    np.save('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/ThesisPlots/LearningCurves/test_loss_curves.npy', test_loss_curves)
+    np.save('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/ThesisPlots/LearningCurves/accuracy_curve_seed.npy', accuracy_curve_seed)
 
     # these are the arguments that are used to train the model
     print(f'args: {args}')
 
 if __name__ == '__main__':
     main()
-
-# run from terminal
-# python runALClassification.py --model simple --savemodel True
+    
+# run from terminal with: python runALClassification.py (--model SimpleFFBNNClassification --epochs 150 --lr 0.0001 --criterion CrossEntropyLoss --optimizer SGD --savemodel False)
