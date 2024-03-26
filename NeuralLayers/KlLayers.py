@@ -20,7 +20,7 @@ def reparameterize(mu, logvar, cuda = False, sample = True):
         eps = torch.autograd.Variable(eps)
         return mu + std * eps
     else:
-        return mu
+        return 
 
 class KlLayers(Module):
     """ Class for KL divergence layers. This is an implementation of Fully Connected Group Normal-Jeffrey's layer.
@@ -70,6 +70,7 @@ class KlLayers(Module):
         self.bias_logvar.data.normal_(-9, 1e-2)
 
     def clip_variances(self):
+        """ Function for clipping the variances of the layer. """
         if self.clip_var:
             self.weight_logvar.data.clamp_(max=math.log(self.clip_var))
             self.bias_logvar.data.clamp_(max=math.log(self.clip_var))
@@ -86,6 +87,7 @@ class KlLayers(Module):
         return self.posterior_weight_mean, self.posterior_weight_variance
 
     def forward(self, x):
+        """ Function for forward pass. """
         self.posterior_parameters()
         return F.linear(x, self.posterior_weight_mean, self.bias_mu)
 
@@ -101,6 +103,7 @@ class KlLayers(Module):
         return reparameterize(mu_activation, var_activation.log(), sampling = self.training, cuda = self.cuda)
 
     def kl_divergence(self):
+        """ Function for calculating the KL divergence of the layer. """
         k1, k2, k3 = 0.63576, 1.87320, 1.48695 # approximations made by Molchanov et al. (2017)
         log_alpha = self.get_log_dropout_rates()
         KLD = -torch.sum(k1 * self.sigmoid(k2 + k3 * log_alpha) - 0.5 * self.softplus(-log_alpha) - k1)

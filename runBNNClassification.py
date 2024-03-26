@@ -16,7 +16,7 @@ def arg_inputs():
                         "-m", 
                         help="The model to be used", 
                         type=str,
-                        default="SimpleFFBNNClassification")
+                        default = None)
 
     parser.add_argument("--epochs",
                         "-e",
@@ -120,6 +120,7 @@ class runBNNClassification:
             print(f'Epoch: {epoch}, Test Loss: {test_loss}')     
             print(f'Accuracy: {100 * correct / total}')
 
+            # get validation loss
             self.model.eval()
             correct = 0
             total = 0
@@ -136,6 +137,21 @@ class runBNNClassification:
             print(f'Epoch: {epoch}, Val Loss: {val_loss}')
             print(f'Accuracy: {100 * correct / total}')
             
+
+            # get accuracy as a percentage
+            self.model.eval()
+            correct = 0
+            total = 0
+            with torch.no_grad():
+                for X, y in self.dataloader_val:
+                    X, y = X.to(self.device), y.to(self.device)
+                    outputs = self.model(X)
+                    _, predicted = torch.max(outputs, 1)
+                    total += y.size(0)
+                    correct += (predicted == y).sum().item()
+            accuracy_per = 100 * correct / total
+
+
             
             self.test_loss.append(test_loss)
             self.val_loss.append(val_loss)
@@ -143,7 +159,7 @@ class runBNNClassification:
 
         print('Finished Training')
 
-        return self.test_loss, self.val_loss, self.accuracy
+        return self.test_loss, self.val_loss, self.accuracy, accuracy_per
 
    
     def visualizeLoss(self):
@@ -175,6 +191,9 @@ class runBNNClassification:
 
         return uncertainty
 
+
+
+
     def save_model(self, path):
         torch.save(self.model.state_dict(), path)
     
@@ -184,21 +203,40 @@ def main():
     if args.model == "SimpleFFBNNClassification":
         model = SimpleFFBNNClassification(4, 5)
         run = runBNNClassification(model, dataloader_train, dataloader_test, dataloader_val, device, args.epochs, args.lr, args.criterion, torch.optim.Adam, args.savemodel)
-        run.train()
+        test_loss, val_loss, accuracy, accuracy_per = run.train()
+        print(f'Achieved Accuracy: {accuracy_per}')
         run.visualizeLoss()
         uncertainty_simple_model = run.get_uncertainty()
-        for i in range(len(uncertainty_simple_model)):
-            for j in range(len(uncertainty_simple_model[i])):
-                print(f'Max Uncertainty: {torch.max(uncertainty_simple_model[i][j])}')
+        #for i in range(len(uncertainty_simple_model)):
+         #   for j in range(len(uncertainty_simple_model[i])):
+          #      print(f'Max Uncertainty: {torch.max(uncertainty_simple_model[i][j])}')
+           #     print(f'Min Uncertainty: {torch.min(uncertainty_simple_model[i][j])}')
+
+
+        kl = run.model.kl_divergence()
+        print(f'KL Divergence: {kl}')
 
         if args.savemodel:
             run.save_model('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/trainedModels/simple_model.pth')
 
     else:
         model = LargeFFBNNClassification(4, 5)
-        run = runBNNClassification(model, dataloader_train, dataloader_test, dataloader_val, device, args.epochs, args.lr, args.criterion, torch.optim.Adam, args.save_model)
-        run.train()
+        print(model)
+        run = runBNNClassification(model, dataloader_train, dataloader_test, dataloader_val, device, args.epochs, args.lr, args.criterion, torch.optim.Adam, args.savemodel)
+        test_loss, val_loss, accuracy, accuracy_per = run.train()
+        print(f'Achieved Accuracy: {accuracy_per}')
         run.visualizeLoss()
+        uncertainty_large_model = run.get_uncertainty()
+        #for i in range(len(uncertainty_large_model)):
+         #   for j in range(len(uncertainty_large_model[i])):
+          #      print(f'Max Uncertainty: {torch.max(uncertainty_large_model[i][j])}')
+           #     print(f'Min Uncertainty: {torch.min(uncertainty_large_model[i][j])}')
+
+        kl = run.model.kl_divergence()
+        print(f'KL Divergence: {kl}')
+
+        if args.savemodel:
+            run.save_model('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/trainedModels/large_model.pth')
         
     
 
