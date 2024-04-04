@@ -192,6 +192,29 @@ class runBNNClassification:
         return uncertainty
 
 
+    def getEnsembleUncertainty(self):
+        '''
+        Function to get the uncertainty of the ensemble model
+        '''
+        # use the model to predict the validation data 3 times
+        self.model.eval()
+        ensemble_uncertainty = []
+        with torch.no_grad():
+            for X, y in self.dataloader_val:
+                X, y = X.to(self.device), y.to(self.device)
+                outputs = self.model(X)
+                ensemble_uncertainty.append(outputs)
+                outputs = self.model(X)
+                ensemble_uncertainty.append(outputs)
+                outputs = self.model(X)
+                ensemble_uncertainty.append(outputs)
+
+        # rescale the uncertainty to be between 0 and 1
+        for i in range(len(ensemble_uncertainty)):
+            ensemble_uncertainty[i] = torch.nn.functional.softmax(ensemble_uncertainty[i], dim=1)
+
+        return ensemble_uncertainty
+
 
 
     def save_model(self, path):
@@ -213,11 +236,32 @@ def main():
            #     print(f'Min Uncertainty: {torch.min(uncertainty_simple_model[i][j])}')
 
 
+
         kl = run.model.kl_divergence()
         print(f'KL Divergence: {kl}')
 
+       # get the ensemble uncertainty
+        ensemble_uncertainty = run.getEnsembleUncertainty()
+        
+       # print the ensemble uncertainty for the first 5 samples
+        for i in range(5):
+            print(f'Ensemble Uncertainty: {ensemble_uncertainty[0][i]}')
+            print(f'Ensemble Uncertainty: {ensemble_uncertainty[1][i]}')
+            print(f'Ensemble Uncertainty: {ensemble_uncertainty[2][i]}')
+
+            
+
+        
+        
+
+
+
         if args.savemodel:
             run.save_model('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/trainedModels/simple_model.pth')
+
+        # run the simple model from terminal with the following command:
+        # python runBNNClassification.py -m SimpleFFBNNClassification -e 1000 -l 0.0001 -c nn.CrossEntropyLoss() -s True
+
 
     else:
         model = LargeFFBNNClassification(4, 5)

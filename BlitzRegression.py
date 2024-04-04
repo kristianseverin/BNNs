@@ -58,6 +58,7 @@ optimizer = optim.Adam(regressor.parameters(), lr=0.01)
 criterion = nn.MSELoss()
 
 test_loss = []
+val_loss = []
 accuracy = []
 upper_ci = []
 lower_ci = []
@@ -103,15 +104,23 @@ for epoch in range(1000):
 
 
 # test the model on the validation set
-val_loss = []
+for epoch in range(1000):
+    for i, (datapoints, labels) in enumerate(dataloader_val):
+        loss = regressor.sample_elbo(inputs=datapoints.to(device),
+                                    labels=labels.to(device),
+                                    criterion=criterion,
+                                    sample_nbr=3,
+                                    complexity_cost_weight=1/len(dataloader_val))
+
+    val_loss.append(loss.item())
+np.save("/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/ThesisPlots/LearningCurves/val_loss_blitz.npy", val_loss)
+
 regressor.eval()
 with torch.no_grad():
     preds = regressor(dataloader_val.dataset.tensors[0].to(device))
     loss = criterion(preds, dataloader_val.dataset.tensors[1].to(device))
     print("Validation Loss: ", loss.item())
     print("R2 Score: ", r2_score(dataloader_val.dataset.tensors[1].cpu().numpy(), preds.cpu().numpy())) 
-    val_loss.append(loss.item())       
-    np.save("/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/ThesisPlots/LearningCurves/val_loss_blitz.npy", val_loss)
 
     # save predictions
     np.save("/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/ThesisPlots/preds_blitz.npy", preds.cpu().numpy())
