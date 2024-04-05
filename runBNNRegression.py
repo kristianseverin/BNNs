@@ -266,6 +266,10 @@ def main():
 
         run.visualizeMetrics(ci_lower, ci_upper, y_val, pred)
 
+        # get the KL divergence
+        kl = run.model.kl_divergence()
+        print(f'KL Divergence: {kl}')
+
     else:
         run = runBNN(DenseRegressor(input_dim = 4, output_dim = 1), dataloader_train, dataloader_test, dataloader_val, args.epochs, args.lr, args.optimizer, args.criterion, args.device)
         run.train()
@@ -293,3 +297,5 @@ if __name__ == '__main__':
 
 # run this in the terminal with the following command:
 # python runBNRegression.py -m SimpleFFBNN -dt dataloader_train -dte dataloader_test -dv dataloader_val -e 1000 -l 0.0001 -c nn.MSELoss() -d device
+# run dense model from terminal with the following command:
+# python runBNNRegression.py -m DenseBBBRegression -dt dataloader_train -dte dataloader_test -dv dataloader_val -e 1000 -l 0.0001 -c nn.MSELoss() -d device

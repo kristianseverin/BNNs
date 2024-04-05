@@ -1,5 +1,6 @@
 from blitz.modules import BayesianLinear
 from blitz.utils import variational_estimator
+from blitz.losses.kl_divergence import kl_divergence_from_nn
 import torch.nn as nn
 
 @variational_estimator
@@ -28,5 +29,12 @@ class DenseBBBRegression(nn.Module):
         x = self.relu2(self.fc2(x))
         x = self.fc3(x)
         return x
+
+    def kl_divergence(self):
+        kl = 0
+        for layer in self.klList:
+            kl += kl_divergence_from_nn(layer)
+        return kl
+        
 
 
