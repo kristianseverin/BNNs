@@ -71,9 +71,9 @@ class KlLayers(Module):
 
     def clip_variances(self):
         """ Function for clipping the variances of the layer. """
-        if self.clip_var:
-            self.weight_logvar.data.clamp_(max=math.log(self.clip_var))
-            self.bias_logvar.data.clamp_(max=math.log(self.clip_var))
+        if self.clip_variance:
+            self.weight_logvar.data.clamp_(max=math.log(self.clip_variance))
+            self.bias_logvar.data.clamp_(max=math.log(self.clip_variance))
 
     def get_log_dropout_rates(self):
         log_alpha = self.dropout_logvar - torch.log(self.dropout_mu.pow(2) + self.epsilon)

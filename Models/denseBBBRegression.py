@@ -35,6 +35,8 @@ class DenseBBBRegression(nn.Module):
         for layer in self.klList:
             kl += kl_divergence_from_nn(layer)
         return kl
+
+
         
 
 

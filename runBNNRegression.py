@@ -83,6 +83,8 @@ def get_device():
     print("Device: ", device)
     return device
 
+
+
 # get the device
 device = get_device()
 
@@ -108,6 +110,12 @@ class runBNN:
         self.testLoss = []
         self.valLoss = []
         #self.input_dim = len(data_test) # input_dim but have to think about this
+
+    def objective(self, output, target, kl, beta):
+        loss_fun = nn.MSELoss()
+        discrimination_error = loss_fun(output.view(-1), target.view(-1))
+        variational_bound = discrimination_error + beta * kl
+        return variational_bound, discrimination_error, kl
 
     def train(self):
         for i in range(self.epoch):
@@ -147,10 +155,113 @@ class runBNN:
             self.valLoss.append(val_loss / len(self.data_train.dataset))
             #print(f'Epoch {i + 1}, Loss: {loss.item()}')
             print(f'Epoch {i + 1}, Train Loss: {self.trainLoss[-1]}, Test Loss: {self.testLoss[-1]}, Val Loss: {self.valLoss[-1]}')
+
+
+    def trainDenseBBB(self):
+        for epoch in range(self.epoch):
+            self.model.train()
+            for X, y in self.data_train:
+                X, y = X.to(self.device), y.to(self.device)
+                self.optimizer.zero_grad()
+                Trainloss = self.model.sample_elbo(inputs=X,
+                                               labels=y,
+                                               criterion=self.criterion,
+                                               sample_nbr=3,
+                                               complexity_cost_weight=1/len(self.data_train))
+
+
+            Trainloss.backward()
+            self.optimizer.step()
+
+
+            self.model.eval()
+            with torch.no_grad():
+                for X, y in self.data_test:
+                    X, y = X.to(self.device), y.to(self.device)
+                    Testloss = self.model.sample_elbo(inputs=X,
+                                               labels=y,
+                                               criterion=self.criterion,
+                                               sample_nbr=3,
+                                               complexity_cost_weight=1/len(self.data_test))
+                    
+
+
+            self.model.eval()
+            with torch.no_grad():
+                for X, y in self.data_val:
+                    X, y = X.to(self.device), y.to(self.device)
+                    Valloss = self.model.sample_elbo(inputs=X,
+                                               labels=y,
+                                               criterion=self.criterion,
+                                               sample_nbr=3,
+                                               complexity_cost_weight=1/len(self.data_val))
+
+            self.trainLoss.append(Trainloss)
+            self.testLoss.append(Testloss)
+            self.valLoss.append(Valloss)
+
+            print(f'Epoch {epoch + 1}, Train Loss: {self.trainLoss[-1]}, Test Loss: {self.testLoss[-1]}, Val Loss: {self.valLoss[-1]}')
+            
+    def trainClosedFormBNN(self):
+        train_loss_closed, test_loss_closed, val_loss_closed = [], [], []
+        train_log_likelihood_closed, test_log_likelihood_closed, val_log_likelihood_closed = [], [], []
+        train_kl_closed, test_kl_closed, val_kl_closed = [], [], []
+        m = len(self.data_train.dataset)  # number of samples
+        train_R2 = []
+
+        for epoch in range(self.epoch):
+
+            self.model.train()
+
+            outputs = self.model(self.data_train.dataset.tensors[0].to(self.device))
+            loss, log_likelihood, scaled_kl = self.objective(outputs, self.data_train.dataset.tensors[1].to(self.device), self.model.kl_divergence(), 1 / m)
+            train_loss_closed.append(loss)
+            train_log_likelihood_closed.append(log_likelihood)
+            train_kl_closed.append(scaled_kl)
+
+            # get the R2 score
+            y_pred = self.model(self.data_train.dataset.tensors[0].to(self.device))
+            y_true = self.data_train.dataset.tensors[1].to(self.device)
+            R2 = r2_score(y_true.detach().numpy(), y_pred.detach().numpy())
+            train_R2.append(R2)
+
+            loss.backward()
+            self.optimizer.step()
+
+            for layer in self.model.kl_layers:
+                layer.clip_variances()
+
+            self.model.eval()
+            with torch.no_grad():
+                outputs = self.model(self.data_test.dataset.tensors[0].to(self.device))
+                loss, log_likelihood, scaled_kl = self.objective(outputs, self.data_test.dataset.tensors[1].to(self.device), self.model.kl_divergence(), 1 / m)
+                test_loss_closed.append(loss.item())
+                test_log_likelihood_closed.append(log_likelihood.item())
+                test_kl_closed.append(scaled_kl.item())
+
+            self.model.eval()
+            with torch.no_grad():
+                outputs = self.model(self.data_val.dataset.tensors[0].to(self.device))
+                loss, log_likelihood, scaled_kl = self.objective(outputs, self.data_val.dataset.tensors[1].to(self.device), self.model.kl_divergence(), 1 / m)
+                val_loss_closed.append(loss.item())
+                val_log_likelihood_closed.append(log_likelihood.item())
+                val_kl_closed.append(scaled_kl.item())
+
             
 
+            print(f'Epoch {epoch + 1}, Train Loss: {train_loss_closed[-1]}, Test Loss: {test_loss_closed[-1]}, Val Loss: {val_loss_closed[-1]}, Train R2: {train_R2[-1]}')
+
+
+            self.trainLoss = train_loss_closed
+            self.testLoss = test_loss_closed
+            self.valLoss = val_loss_closed
+            print(f'val_loss: {val_loss_closed}')
+
+        
+
+
     # for regression
-    def evaluate_regression(self, regressor, X, y, data_test, samples = 100, std_multiplier = 2):
+    def evaluate_regression(self, regressor, X, y, data_test, samples = 100, std_multiplier = 3):
         self.model.eval()
         X, y = next(iter(self.data_test))
         X, y = X.to(self.device), y.to(self.device)
@@ -165,7 +276,6 @@ class runBNN:
         ic_acc = ic_acc.float().mean()
         return ic_acc, (ci_upper >= y).float().mean(), (ci_lower <= y).float().mean(), ci_upper, ci_lower, RMSE
         
-
 
 
     def predict(self, val_data):
@@ -212,6 +322,22 @@ class runBNN:
         plt.legend()
         plt.show()
 
+    def saveMetrics(self, path, pred, y_val, RMSE):
+
+        RMSE = RMSE.detach().numpy()
+
+
+        train_loss = torch.tensor(self.trainLoss).detach().numpy()
+        
+        # save metrics to numpy
+        np.save(f'{path}/preds.npy', pred)
+        np.save(f'{path}/true.npy', y_val)
+        np.save(f'{path}/RMSE.npy', RMSE)        
+
+        np.save(f'{path}/train_loss.npy', train_loss)
+        np.save(f'{path}/test_loss.npy', self.testLoss)
+        np.save(f'{path}/val_loss.npy', self.valLoss)
+
     
     def save_model(self, path):
         torch.save(self.model.state_dict(), path)
@@ -230,7 +356,7 @@ def main():
     
     if args.model == 'SimpleFFBNN':
         run = runBNN(SimpleFFBNN(input_dim = 4, output_dim = 1), dataloader_train, dataloader_test, dataloader_val, args.epochs, args.lr, args.optimizer, args.criterion, args.device)
-        run.train()
+        run.trainClosedFormBNN()
         run.visualizeLoss()
         ic_acc, upper, lower, ci_upper, ci_lower, RMSE = run.evaluate_regression(regressor = SimpleFFBNN(input_dim = 4, output_dim =1), X = next(iter(dataloader_test))[0], y = next(iter(dataloader_test))[1], data_test = dataloader_test, samples = 100, std_multiplier = 2)
         print(f'IC Accuracy: {ic_acc.item()}, Upper: {upper.item()}, Lower: {lower.item()}, RMSE = {RMSE}')
@@ -246,13 +372,15 @@ def main():
 
         run.visualizeMetrics(ci_lower, ci_upper, y_val, pred)
 
+        #run.saveMetrics('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/ThesisPlots/Results/SimpleFFBNN', pred, y_val, RMSE)
+
         # get kl divergence
         kl = run.model.kl_divergence()
         print(f'KL Divergence: {kl}')
 
     elif args.model == 'DenseBBBRegression':
         run = runBNN(DenseBBBRegression(input_dim = 4, output_dim = 1), dataloader_train, dataloader_test, dataloader_val, args.epochs, args.lr, args.optimizer, args.criterion, args.device)
-        run.train()
+        run.trainDenseBBB()
         run.visualizeLoss()
         ic_acc, upper, lower, ci_upper, ci_lower, RMSE = run.evaluate_regression(regressor = DenseBBBRegression(input_dim = 4, output_dim =1), X = next(iter(dataloader_test))[0], y = next(iter(dataloader_test))[1], data_test = dataloader_test, samples = 100, std_multiplier = 2)
         print(f'IC Accuracy: {ic_acc.item()}, Upper: {upper.item()}, Lower: {lower.item()}, RMSE: {RMSE}')
@@ -265,6 +393,8 @@ def main():
         run.visualizePrediction(y_val, pred)
 
         run.visualizeMetrics(ci_lower, ci_upper, y_val, pred)
+
+        run.saveMetrics('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/ThesisPlots/Results/Regression/BBBDenseRegression', pred, y_val, RMSE)
 
         # get the KL divergence
         kl = run.model.kl_divergence()
@@ -285,6 +415,8 @@ def main():
         run.visualizePrediction(y_val, pred)
 
         run.visualizeMetrics(ci_lower, ci_upper, y_val, pred)
+
+        run.saveMetrics('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/ThesisPlots/Results/DenseRegression', pred, y_val, RMSE)
 
         # get the KL divergence
         kl = run.model.kl_divergence()
