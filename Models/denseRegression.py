@@ -19,7 +19,7 @@ class DenseRegressor(nn.Module):
 
         self.layers = [self.fc1, self.relu1, self.fc2, self.relu2, self.fc3]
         self.reluList = [self.relu1, self.relu2]
-        self.klList = [self.fc1, self.fc2, self.fc3]
+        self.kl_layers = [self.fc1, self.fc2, self.fc3]
 
     def forward(self, x):
         for layer in self.layers:
@@ -28,6 +28,6 @@ class DenseRegressor(nn.Module):
 
     def kl_divergence(self):
         KLD = 0
-        for layer in self.klList:
+        for layer in self.kl_layers:
             KLD += layer.kl_divergence()
         return KLD  

@@ -73,9 +73,9 @@ def preprocess_data(df):
     dataset_train = TensorDataset(X_train, y_train)
     dataset_test = TensorDataset(X_test, y_test)
     dataset_val = TensorDataset(X_val, y_val)
-    dataloader_train = DataLoader(dataset_train, batch_size=64, shuffle=True)
-    dataloader_test = DataLoader(dataset_test, batch_size=64, shuffle=False)
-    dataloader_val = DataLoader(dataset_val, batch_size=64, shuffle=False)
+    dataloader_train = DataLoader(dataset_train, batch_size= 128, shuffle=True)
+    dataloader_test = DataLoader(dataset_test, batch_size= 128, shuffle=False)
+    dataloader_val = DataLoader(dataset_val, batch_size= 128, shuffle=False)
     return dataloader_train, dataloader_test, dataloader_val
 
 def preprocess_classification_data(df):

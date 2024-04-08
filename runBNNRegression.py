@@ -9,6 +9,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from Utils import custom_data_loader, preprocess_data
 import torch.nn as nn
 import torch.optim as optim
+import torch.nn.functional as F
 import matplotlib.pyplot as plt
 import seaborn as sns
 from Models.simpleFFBNN import SimpleFFBNN
@@ -60,6 +61,11 @@ def arg_inputs():
                         help="Device",
                         type=str,
                         default="device")
+    parser.add_argument("--instances",
+                        "-n",
+                        help="Number of model instances",
+                        type=int,
+                        default=3)
 
     # parse the arguments
     args = parser.parse_args()
@@ -94,11 +100,12 @@ dataloader_train, dataloader_test, dataloader_val = preprocess_data(pd.read_csv(
 
 # a class that runs the BNN
 class runBNN:
-    def __init__(self, model, data_train, data_test, data_val, epoch, lr, optimizer, criterion, device):
+    def __init__(self, model, data_train, data_test, data_val, epoch, lr, optimizer, criterion, device, instances):
         self.model = model
         self.data_train = data_train
         self.data_test = data_test
         self.data_val = data_val
+        self.instances = instances
         self.epoch = epoch
         self.lr = lr
         self.optimizer = optimizer
@@ -213,6 +220,7 @@ class runBNN:
 
             self.model.train()
 
+
             outputs = self.model(self.data_train.dataset.tensors[0].to(self.device))
             loss, log_likelihood, scaled_kl = self.objective(outputs, self.data_train.dataset.tensors[1].to(self.device), self.model.kl_divergence(), 1 / m)
             train_loss_closed.append(loss)
@@ -250,13 +258,13 @@ class runBNN:
             
 
             print(f'Epoch {epoch + 1}, Train Loss: {train_loss_closed[-1]}, Test Loss: {test_loss_closed[-1]}, Val Loss: {val_loss_closed[-1]}, Train R2: {train_R2[-1]}')
+            print(f'Epoch {epoch + 1}, Train Log Likelihood: {train_log_likelihood_closed[-1]}, Test Log Likelihood: {test_log_likelihood_closed[-1]}, Val Log Likelihood: {val_log_likelihood_closed[-1]}')
+            print(f'Epoch {epoch + 1}, Train KL: {train_kl_closed[-1]}, Test KL: {test_kl_closed[-1]}, Val KL: {val_kl_closed[-1]}')
 
 
             self.trainLoss = train_loss_closed
             self.testLoss = test_loss_closed
             self.valLoss = val_loss_closed
-            print(f'val_loss: {val_loss_closed}')
-
         
 
 
@@ -290,7 +298,7 @@ class runBNN:
     
     def visualizeLoss(self):
         #plt.plot(self.loss, label='loss')
-        plt.plot(self.testLoss, label='train loss')
+        plt.plot(self.testLoss, label='test loss')
         #plt.plot(self.testLoss, label='test loss')
         plt.plot(self.valLoss, label='val loss')
         plt.legend()
@@ -328,7 +336,7 @@ class runBNN:
 
 
         train_loss = torch.tensor(self.trainLoss).detach().numpy()
-        
+
         # save metrics to numpy
         np.save(f'{path}/preds.npy', pred)
         np.save(f'{path}/true.npy', y_val)
@@ -349,13 +357,13 @@ def main():
     args.device = get_device()
 
     # get the optimizer
-    args.optimizer = optim.SGD
+    args.optimizer = optim.Adam
 
     # get the criterion
     args.criterion = nn.MSELoss()
     
     if args.model == 'SimpleFFBNN':
-        run = runBNN(SimpleFFBNN(input_dim = 4, output_dim = 1), dataloader_train, dataloader_test, dataloader_val, args.epochs, args.lr, args.optimizer, args.criterion, args.device)
+        run = runBNN(SimpleFFBNN(input_dim = 4, output_dim = 1), dataloader_train, dataloader_test, dataloader_val, args.epochs, args.lr, args.optimizer, args.criterion, args.device, args.instances)
         run.trainClosedFormBNN()
         run.visualizeLoss()
         ic_acc, upper, lower, ci_upper, ci_lower, RMSE = run.evaluate_regression(regressor = SimpleFFBNN(input_dim = 4, output_dim =1), X = next(iter(dataloader_test))[0], y = next(iter(dataloader_test))[1], data_test = dataloader_test, samples = 100, std_multiplier = 2)
@@ -363,6 +371,8 @@ def main():
     
         # get the predictions
         pred = run.predict(dataloader_val)
+
+        # get ensemble predictions
         
         # visualize the predictions
 
@@ -372,14 +382,17 @@ def main():
 
         run.visualizeMetrics(ci_lower, ci_upper, y_val, pred)
 
-        #run.saveMetrics('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/ThesisPlots/Results/SimpleFFBNN', pred, y_val, RMSE)
+        run.saveMetrics('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/ThesisPlots/Results/Regression/SimpleFFBNN', pred, y_val, RMSE)
 
         # get kl divergence
         kl = run.model.kl_divergence()
-        print(f'KL Divergence: {kl}')
+        #print(f'KL Divergence: {kl}')
+
+        # save the model
+        run.save_model('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/trainedModels/simple_model.pth')
 
     elif args.model == 'DenseBBBRegression':
-        run = runBNN(DenseBBBRegression(input_dim = 4, output_dim = 1), dataloader_train, dataloader_test, dataloader_val, args.epochs, args.lr, args.optimizer, args.criterion, args.device)
+        run = runBNN(DenseBBBRegression(input_dim = 4, output_dim = 1), dataloader_train, dataloader_test, dataloader_val, args.epochs, args.lr, args.optimizer, args.criterion, args.device, args.instances)
         run.trainDenseBBB()
         run.visualizeLoss()
         ic_acc, upper, lower, ci_upper, ci_lower, RMSE = run.evaluate_regression(regressor = DenseBBBRegression(input_dim = 4, output_dim =1), X = next(iter(dataloader_test))[0], y = next(iter(dataloader_test))[1], data_test = dataloader_test, samples = 100, std_multiplier = 2)
@@ -398,11 +411,15 @@ def main():
 
         # get the KL divergence
         kl = run.model.kl_divergence()
-        print(f'KL Divergence: {kl}')
+        #print(f'KL Divergence: {kl}')
+
+        # save the model
+        run.save_model('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/trainedModels/dense_BBB_model.pth')
 
     else:
-        run = runBNN(DenseRegressor(input_dim = 4, output_dim = 1), dataloader_train, dataloader_test, dataloader_val, args.epochs, args.lr, args.optimizer, args.criterion, args.device)
-        run.train()
+        #args.optimizer = optim.SGD
+        run = runBNN(DenseRegressor(input_dim = 4, output_dim = 1), dataloader_train, dataloader_test, dataloader_val, args.epochs, args.lr, args.optimizer, args.criterion, args.device, args.instances)
+        run.trainClosedFormBNN()
         run.visualizeLoss()
         ic_acc, upper, lower, ci_upper, ci_lower, RMSE = run.evaluate_regression(regressor = DenseRegressor(input_dim = 4, output_dim =1), X = next(iter(dataloader_test))[0], y = next(iter(dataloader_test))[1], data_test = dataloader_test, samples = 100, std_multiplier = 2)
         print(f'IC Accuracy: {ic_acc.item()}, Upper: {upper.item()}, Lower: {lower.item()}, RMSE: {RMSE}')
@@ -416,7 +433,7 @@ def main():
 
         run.visualizeMetrics(ci_lower, ci_upper, y_val, pred)
 
-        run.saveMetrics('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/ThesisPlots/Results/DenseRegression', pred, y_val, RMSE)
+        run.saveMetrics('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/ThesisPlots/Results/Regression/DenseRegression', pred, y_val, RMSE)
 
         # get the KL divergence
         kl = run.model.kl_divergence()
