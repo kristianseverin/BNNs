@@ -95,7 +95,7 @@ def get_device():
 device = get_device()
 
 # read data and preprocess
-dataloader_train, dataloader_test, dataloader_val = preprocess_data(pd.read_csv('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/Data/quality_of_food.csv'))
+dataloader_train, dataloader_test, dataloader_val = preprocess_data(pd.read_csv('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/Data/quality_of_food.csv'), batch_size = 128)
 
 
 # a class that runs the BNN
@@ -269,7 +269,7 @@ class runBNN:
 
 
     # for regression
-    def evaluate_regression(self, regressor, X, y, data_test, samples = 100, std_multiplier = 3):
+    def evaluate_regression(self, regressor, X, y, data_test, samples = 1000, std_multiplier = 2):
         self.model.eval()
         X, y = next(iter(self.data_test))
         X, y = X.to(self.device), y.to(self.device)

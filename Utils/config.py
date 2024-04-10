@@ -58,7 +58,7 @@ class custom_data_loader_classification(torch.utils.data.Dataset):
       return len(self.X)
 
 # a function that preprocesses the data
-def preprocess_data(df):
+def preprocess_data(df, batch_size):
     df_custom = pd.read_csv('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/Data/quality_of_food.csv')
     df_custom = custom_data_loader(df_custom, is_normalize=True)
     scaler = StandardScaler()
@@ -66,16 +66,16 @@ def preprocess_data(df):
     y = df_custom.y
     X = scaler.fit_transform(X)
     y = scaler.fit_transform(y.reshape(-1,1))
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=43)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=11)
     X_train, y_train = torch.FloatTensor(X_train), torch.FloatTensor(y_train)
     X_test, y_test = torch.FloatTensor(X_test), torch.FloatTensor(y_test)
-    X_val, X_test, y_val, y_test = train_test_split(X_test, y_test, test_size=0.5, random_state=43)
+    X_val, X_test, y_val, y_test = train_test_split(X_test, y_test, test_size=0.5, random_state=11)
     dataset_train = TensorDataset(X_train, y_train)
     dataset_test = TensorDataset(X_test, y_test)
     dataset_val = TensorDataset(X_val, y_val)
-    dataloader_train = DataLoader(dataset_train, batch_size= 128, shuffle=True)
-    dataloader_test = DataLoader(dataset_test, batch_size= 128, shuffle=False)
-    dataloader_val = DataLoader(dataset_val, batch_size= 128, shuffle=False)
+    dataloader_train = DataLoader(dataset_train, batch_size= batch_size, shuffle=True)
+    dataloader_test = DataLoader(dataset_test, batch_size= batch_size, shuffle=False)
+    dataloader_val = DataLoader(dataset_val, batch_size= batch_size, shuffle=False)
     return dataloader_train, dataloader_test, dataloader_val
 
 def preprocess_classification_data(df):
@@ -94,10 +94,10 @@ def preprocess_classification_data(df):
 
   #X = scaler.fit_transform(X)
   #y = scaler.fit_transform(y.reshape(-1,1))
-  X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=43)
+  X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.3, random_state = 11)
   X_train, y_train = torch.FloatTensor(X_train), torch.LongTensor(y_train)
   X_test, y_test = torch.FloatTensor(X_test), torch.LongTensor(y_test)
-  X_val, X_test, y_val, y_test = train_test_split(X_test, y_test, test_size=0.5, random_state=43)
+  X_val, X_test, y_val, y_test = train_test_split(X_test, y_test, test_size = 0.5, random_state = 11)
   dataset_train = TensorDataset(X_train, y_train)
   dataset_test = TensorDataset(X_test, y_test)
   dataset_val = TensorDataset(X_val, y_val)
@@ -123,7 +123,7 @@ def preprocess_classification_activeL_data(df):
 
     #X = scaler.fit_transform(X)
     #y = scaler.fit_transform(y.reshape(-1,1))
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=43)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state = 11)
     X_train, y_train = torch.FloatTensor(X_train), torch.LongTensor(y_train)
     X_test, y_test = torch.FloatTensor(X_test), torch.LongTensor(y_test)
     dataset_train = TensorDataset(X_train, y_train)
