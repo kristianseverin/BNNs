@@ -95,7 +95,7 @@ def get_device():
 device = get_device()
 
 # read data and preprocess
-dataloader_train, dataloader_test, dataloader_val = preprocess_data(pd.read_csv('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/Data/quality_of_food.csv'), batch_size = 128)
+dataloader_train, dataloader_test, dataloader_val = preprocess_data(pd.read_csv('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/Data/quality_of_food.csv'), batch_size = 64)
 
 
 # a class that runs the BNN
@@ -165,6 +165,7 @@ class runBNN:
 
 
     def trainDenseBBB(self):
+        train_RMSE, test_RMSE, val_RMSE = [], [], []
         for epoch in range(self.epoch):
             self.model.train()
             for X, y in self.data_train:
@@ -176,9 +177,16 @@ class runBNN:
                                                sample_nbr=3,
                                                complexity_cost_weight=1/len(self.data_train))
 
+                RMSE_train = torch.sqrt(((self.model(X) - y) ** 2).mean())
+            train_RMSE.append(RMSE_train)
+
+
+
+
 
             Trainloss.backward()
             self.optimizer.step()
+            
 
 
             self.model.eval()
@@ -190,6 +198,9 @@ class runBNN:
                                                criterion=self.criterion,
                                                sample_nbr=3,
                                                complexity_cost_weight=1/len(self.data_test))
+                    RMSE_test = torch.sqrt(((self.model(X) - y) ** 2).mean())
+
+            test_RMSE.append(RMSE_test)
                     
 
 
@@ -203,11 +214,19 @@ class runBNN:
                                                sample_nbr=3,
                                                complexity_cost_weight=1/len(self.data_val))
 
+                    RMSE_val = torch.sqrt(((self.model(X) - y) ** 2).mean())
+            val_RMSE.append(RMSE_val)
+
             self.trainLoss.append(Trainloss)
             self.testLoss.append(Testloss)
             self.valLoss.append(Valloss)
 
+            self.train_RMSE = train_RMSE
+            self.test_RMSE = test_RMSE
+            self.val_RMSE = val_RMSE
+
             print(f'Epoch {epoch + 1}, Train Loss: {self.trainLoss[-1]}, Test Loss: {self.testLoss[-1]}, Val Loss: {self.valLoss[-1]}')
+            print(f'Epoch {epoch + 1}, Train RMSE: {self.train_RMSE[-1]}, Test RMSE: {self.test_RMSE[-1]}, Val RMSE: {self.val_RMSE[-1]}')
             
     def trainClosedFormBNN(self):
         train_loss_closed, test_loss_closed, val_loss_closed = [], [], []
@@ -215,6 +234,9 @@ class runBNN:
         train_kl_closed, test_kl_closed, val_kl_closed = [], [], []
         m = len(self.data_train.dataset)  # number of samples
         train_R2 = []
+        train_RMSE = []
+        test_RMSE = []
+        val_RMSE = []
 
         for epoch in range(self.epoch):
 
@@ -232,6 +254,8 @@ class runBNN:
             y_true = self.data_train.dataset.tensors[1].to(self.device)
             R2 = r2_score(y_true.detach().numpy(), y_pred.detach().numpy())
             train_R2.append(R2)
+            RMSE = torch.sqrt(((y_pred - y_true) ** 2).mean())
+            train_RMSE.append(RMSE)
 
             loss.backward()
             self.optimizer.step()
@@ -246,6 +270,9 @@ class runBNN:
                 test_loss_closed.append(loss.item())
                 test_log_likelihood_closed.append(log_likelihood.item())
                 test_kl_closed.append(scaled_kl.item())
+                RMSE_test = torch.sqrt(((outputs - self.data_test.dataset.tensors[1].to(self.device)) ** 2).mean())
+                test_RMSE.append(RMSE_test)
+
 
             self.model.eval()
             with torch.no_grad():
@@ -254,18 +281,23 @@ class runBNN:
                 val_loss_closed.append(loss.item())
                 val_log_likelihood_closed.append(log_likelihood.item())
                 val_kl_closed.append(scaled_kl.item())
+                RMSE_val = torch.sqrt(((outputs - self.data_val.dataset.tensors[1].to(self.device)) ** 2).mean())
+                val_RMSE.append(RMSE_val)
 
             
 
             print(f'Epoch {epoch + 1}, Train Loss: {train_loss_closed[-1]}, Test Loss: {test_loss_closed[-1]}, Val Loss: {val_loss_closed[-1]}, Train R2: {train_R2[-1]}')
             print(f'Epoch {epoch + 1}, Train Log Likelihood: {train_log_likelihood_closed[-1]}, Test Log Likelihood: {test_log_likelihood_closed[-1]}, Val Log Likelihood: {val_log_likelihood_closed[-1]}')
             print(f'Epoch {epoch + 1}, Train KL: {train_kl_closed[-1]}, Test KL: {test_kl_closed[-1]}, Val KL: {val_kl_closed[-1]}')
-
+            print(f'Epoch {epoch + 1}, Train RMSE: {train_RMSE[-1]}, Test RMSE: {test_RMSE[-1]}, Val RMSE: {val_RMSE[-1]}')
 
             self.trainLoss = train_loss_closed
             self.testLoss = test_loss_closed
             self.valLoss = val_loss_closed
-        
+
+            self.train_RMSE = train_RMSE
+            self.test_RMSE = test_RMSE
+            self.val_RMSE = val_RMSE
 
 
     # for regression
@@ -345,6 +377,12 @@ class runBNN:
         np.save(f'{path}/train_loss.npy', train_loss)
         np.save(f'{path}/test_loss.npy', self.testLoss)
         np.save(f'{path}/val_loss.npy', self.valLoss)
+        
+        train_RMSE = torch.tensor(self.train_RMSE).detach().numpy()
+
+        np.save(f'{path}/train_RMSE.npy', train_RMSE)
+        np.save(f'{path}/test_RMSE.npy', self.test_RMSE)
+        np.save(f'{path}/val_RMSE.npy', self.val_RMSE)
 
     
     def save_model(self, path):
@@ -368,16 +406,14 @@ def main():
         run.visualizeLoss()
         ic_acc, upper, lower, ci_upper, ci_lower, RMSE = run.evaluate_regression(regressor = SimpleFFBNN(input_dim = 4, output_dim =1), X = next(iter(dataloader_test))[0], y = next(iter(dataloader_test))[1], data_test = dataloader_test, samples = 100, std_multiplier = 2)
         print(f'IC Accuracy: {ic_acc.item()}, Upper: {upper.item()}, Lower: {lower.item()}, RMSE = {RMSE}')
-    
+
+       
         # get the predictions
         pred = run.predict(dataloader_val)
-
-        # get ensemble predictions
-        
         # visualize the predictions
 
         y_val = next(iter(dataloader_val))[1]
-
+    
         run.visualizePrediction(y_val, pred)
 
         run.visualizeMetrics(ci_lower, ci_upper, y_val, pred)
@@ -386,7 +422,7 @@ def main():
 
         # get kl divergence
         kl = run.model.kl_divergence()
-        #print(f'KL Divergence: {kl}')
+        print(f'KL Divergence: {kl}')
 
         # save the model
         run.save_model('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/trainedModels/simple_model.pth')
@@ -411,7 +447,7 @@ def main():
 
         # get the KL divergence
         kl = run.model.kl_divergence()
-        #print(f'KL Divergence: {kl}')
+        print(f'KL Divergence: {kl}')
 
         # save the model
         run.save_model('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/trainedModels/dense_BBB_model.pth')
