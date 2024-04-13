@@ -180,14 +180,8 @@ class runBNN:
                 RMSE_train = torch.sqrt(((self.model(X) - y) ** 2).mean())
             train_RMSE.append(RMSE_train)
 
-
-
-
-
             Trainloss.backward()
             self.optimizer.step()
-            
-
 
             self.model.eval()
             with torch.no_grad():
@@ -202,7 +196,6 @@ class runBNN:
 
             test_RMSE.append(RMSE_test)
                     
-
 
             self.model.eval()
             with torch.no_grad():
@@ -234,9 +227,7 @@ class runBNN:
         train_kl_closed, test_kl_closed, val_kl_closed = [], [], []
         m = len(self.data_train.dataset)  # number of samples
         train_R2 = []
-        train_RMSE = []
-        test_RMSE = []
-        val_RMSE = []
+        train_RMSE, test_RMSE, val_RMSE = [], [], []
 
         for epoch in range(self.epoch):
 

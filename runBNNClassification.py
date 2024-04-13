@@ -5,6 +5,7 @@ import GPUtil
 import pandas as pd
 from Models.simpleFFBNNClassification import SimpleFFBNNClassification
 from Models.largeFFBNNClassification import LargeFFBNNClassification
+from Models.BBBClassification import BBBClassification
 import matplotlib.pyplot as plt
 import argparse
 
@@ -89,6 +90,12 @@ class runBNNClassification:
         self.accuracy = []
         self.savemodel = savemodel
         
+    def objective(self, output, target, kl, beta):
+        loss_fun = nn.CrossEntropyLoss()
+        discrimination_error = loss_fun(output, target)
+        variational_bound = discrimination_error + beta * kl
+        return variational_bound, discrimination_error, kl
+
 
     def train(self):
         for epoch in range(self.epochs):
@@ -98,12 +105,21 @@ class runBNNClassification:
                 X, y = X.to(self.device), y.to(self.device)
                 self.optimizer.zero_grad()
                 outputs = self.model(X)
-                loss = self.criterion(outputs, y)
-                loss.backward()
+                Trainloss = self.model.sample_elbo(inputs=X,
+                                               labels=y,
+                                               criterion=self.criterion,
+                                               sample_nbr=3,
+                                               complexity_cost_weight=1/len(self.data_train))
+
+                Trainloss.backward()
                 self.optimizer.step()
-                running_loss += loss.item()
+                running_loss += Trainloss.item()
             print(f'Epoch: {epoch}, Loss: {running_loss}')
 
+
+
+
+            # get test loss
             self.model.eval()
             correct = 0
             total = 0
@@ -115,10 +131,16 @@ class runBNNClassification:
                     _, predicted = torch.max(outputs, 1)
                     total += y.size(0)
                     correct += (predicted == y).sum().item()
-                    loss = self.criterion(outputs, y)
-                    test_loss += loss.item()
-            print(f'Epoch: {epoch}, Test Loss: {test_loss}')     
+                    Testloss = self.model.sample_elbo(inputs=X,
+                                               labels=y,
+                                               criterion=self.criterion,
+                                               sample_nbr=3,
+                                               complexity_cost_weight=1/len(self.dataloader_test))
+                    test_loss += Testloss.item()
+            print(f'Epoch: {epoch}, Test Loss: {test_loss}')
             print(f'Accuracy: {100 * correct / total}')
+
+
 
             # get validation loss
             self.model.eval()
@@ -132,23 +154,15 @@ class runBNNClassification:
                     _, predicted = torch.max(outputs, 1)
                     total += y.size(0)
                     correct += (predicted == y).sum().item()
-                    loss = self.criterion(outputs, y)
-                    val_loss += loss.item()
-            print(f'Epoch: {epoch}, Val Loss: {val_loss}')
-            print(f'Accuracy: {100 * correct / total}')
+                    Valloss = self.model.sample_elbo(inputs=X,
+                                               labels=y,
+                                               criterion=self.criterion,
+                                               sample_nbr=3,
+                                               complexity_cost_weight=1/len(self.dataloader_val))
+                    val_loss += Valloss.item()
             
 
-            # get accuracy as a percentage
-            self.model.eval()
-            correct = 0
-            total = 0
-            with torch.no_grad():
-                for X, y in self.dataloader_val:
-                    X, y = X.to(self.device), y.to(self.device)
-                    outputs = self.model(X)
-                    _, predicted = torch.max(outputs, 1)
-                    total += y.size(0)
-                    correct += (predicted == y).sum().item()
+
             accuracy_per = 100 * correct / total
 
 
@@ -159,18 +173,186 @@ class runBNNClassification:
 
         print('Finished Training')
 
-        return self.test_loss, self.val_loss, self.accuracy, accuracy_per
+    def trainBBBClassification(self):
+        train_accuracy, test_accuracy, val_accuracy = [], [], []
+        self.train_loss, self.test_loss, self.val_loss = [], [], []
+        for epoch in range(self.epochs):
+            correct = 0
+            self.model.train()
+            for X, y in self.dataloader_train:
+                X, y = X.to(self.device), y.to(self.device)
+                self.optimizer.zero_grad()
+                outputs = self.model(X)
+                _, predicted = torch.max(outputs, 1)
+                correct += (predicted == y).sum().item()
+                TrainLoss = self.model.sample_elbo(inputs=X,
+                                               labels=y,
+                                               criterion=self.criterion,
+                                               sample_nbr=3,
+                                               complexity_cost_weight=1/len(self.dataloader_train))
 
-   
+                accuracy_train = 100 * correct / len(self.dataloader_train.dataset)
+            train_accuracy.append(accuracy_train)
+
+            TrainLoss.backward()
+            self.optimizer.step()
+
+            # get the test loss
+            correct = 0
+            self.model.eval()
+            with torch.no_grad():
+                for X, y in self.dataloader_test:
+                    X, y = X.to(self.device), y.to(self.device)
+                    outputs = self.model(X)
+                    _, predicted = torch.max(outputs, 1)
+                    correct += (predicted == y).sum().item()
+                    TestLoss = self.model.sample_elbo(inputs=X,
+                                               labels=y,
+                                               criterion=self.criterion,
+                                               sample_nbr=3,
+                                               complexity_cost_weight=1/len(self.dataloader_test))
+
+                    accuracy_test = 100 * correct / len(self.dataloader_test.dataset)
+            test_accuracy.append(accuracy_test)
+                    
+
+
+            # get the validation loss
+            correct = 0
+            self.model.eval()
+            with torch.no_grad():
+                for X, y in self.dataloader_val:
+                    X, y = X.to(self.device), y.to(self.device)
+                    outputs = self.model(X)
+                    _, predicted = torch.max(outputs, 1)
+                    correct += (predicted == y).sum().item()
+                    ValLoss = self.model.sample_elbo(inputs=X,
+                                               labels=y,
+                                               criterion=self.criterion,
+                                               sample_nbr=3,
+                                               complexity_cost_weight=1/len(self.dataloader_val.dataset))
+
+                    accuracy_val = 100 * correct / len(self.dataloader_val.dataset)
+            val_accuracy.append(accuracy_val)
+                    
+            
+
+            
+            self.train_loss.append(TrainLoss)
+            self.test_loss.append(TestLoss)
+            self.val_loss.append(ValLoss)
+
+            self.train_accuracy = train_accuracy
+            self.test_accuracy = test_accuracy
+            self.val_accuracy = val_accuracy
+
+            print(f'Epoch: {epoch + 1}, trainloss: {self.train_loss[-1]}, testloss: {self.test_loss[-1]}, valloss: {self.val_loss[-1]}')
+            print(f'Epoch: {epoch + 1}, trainaccuracy: {self.train_accuracy[-1]}, testaccuracy: {self.test_accuracy[-1]}, valaccuracy: {self.val_accuracy[-1]}')       
+
+
+
+        print('Finished Training')
+
+
+    def trainClosedFormClassification(self):
+        train_loss_closed, test_loss_closed, val_loss_closed = [], [], []
+        train_log_likelihood_closed, test_log_likelihood_closed, val_log_likelihood_closed = [], [], []
+        train_kl_closed, test_kl_closed, val_kl_closed = [], [], []
+        m = len(self.dataloader_train.dataset)  # number of samples
+        train_accuracy, test_accuracy, val_accuracy = [], [], []
+        
+
+        for epoch in range(self.epochs):
+            
+            outputs = self.model(self.dataloader_train.dataset.tensors[0].to(self.device))
+            loss, log_like, scaled_kl = self.objective(outputs, self.dataloader_train.dataset.tensors[1].to(self.device), self.model.kl_divergence(), 1/  m)
+            train_loss_closed.append(loss)
+            train_log_likelihood_closed.append(log_like)
+            train_kl_closed.append(scaled_kl)
+
+            # get the accuracy
+            _, predicted = torch.max(outputs, 1)
+            correct = (predicted == self.dataloader_train.dataset.tensors[1].to(self.device)).sum().item()
+            accuracy = 100 * correct / m
+            train_accuracy.append(accuracy)
+            print(f'Epoch: {epoch}, Loss: {loss}, Accuracy: {accuracy}')
+
+            loss.backward()
+            self.optimizer.step()
+
+            for layer in self.model.kl_layers:
+                layer.clip_variances()
+
+            # get the test loss
+            outputs = self.model(self.dataloader_test.dataset.tensors[0].to(self.device))
+            loss, log_like, scaled_kl = self.objective(outputs, self.dataloader_test.dataset.tensors[1].to(self.device), self.model.kl_divergence(), 1/  m)
+            test_loss_closed.append(loss)
+            test_log_likelihood_closed.append(log_like)
+            test_kl_closed.append(scaled_kl)
+
+            # get the accuracy
+            _, predicted = torch.max(outputs, 1)
+            correct = (predicted == self.dataloader_test.dataset.tensors[1].to(self.device)).sum().item()
+            accuracy = 100 * correct / len(self.dataloader_test.dataset)
+            test_accuracy.append(accuracy)
+            print(f'Epoch: {epoch}, Test Loss: {loss}, Accuracy: {accuracy}')
+
+            # get the validation loss
+            outputs = self.model(self.dataloader_val.dataset.tensors[0].to(self.device))
+            loss, log_like, scaled_kl = self.objective(outputs, self.dataloader_val.dataset.tensors[1].to(self.device), self.model.kl_divergence(), 1/  m)
+            val_loss_closed.append(loss)
+            val_log_likelihood_closed.append(log_like)
+            val_kl_closed.append(scaled_kl)
+
+            # get the accuracy
+            _, predicted = torch.max(outputs, 1)
+            correct = (predicted == self.dataloader_val.dataset.tensors[1].to(self.device)).sum().item()
+            accuracy = 100 * correct / len(self.dataloader_val.dataset)
+            val_accuracy.append(accuracy)
+            print(f'Epoch: {epoch}, Validation Loss: {loss}, Accuracy: {accuracy}')
+
+
+            # define loss and accuracy for the training process to be used in the visualization
+            self.train_loss = train_loss_closed
+            self.test_loss = test_loss_closed
+            self.val_loss = val_loss_closed
+            self.train_accuracy = train_accuracy
+            self.test_accuracy = test_accuracy
+            self.val_accuracy = val_accuracy
+
+
+        print('Finished Training')
+
+
     def visualizeLoss(self):
-        plt.plot(self.test_loss, label='Test Loss')
-        plt.plot(self.val_loss, label='Val Loss')
+
+        # tensor.detach().numpy() converts the tensor to numpy
+        train_loss = torch.tensor(self.train_loss).detach().numpy()
+        test_loss = torch.tensor(self.test_loss).detach().numpy()
+        val_loss = torch.tensor(self.val_loss).detach().numpy()
+
+        # plot the training loss
+        plt.plot(train_loss, label='Training Loss')
+        plt.plot(test_loss, label='Test Loss')
+        plt.plot(val_loss, label='Validation Loss')
+        plt.xlabel('Epochs')
+        plt.ylabel('Loss')
+        plt.title('Loss Curves')
         plt.legend()
         plt.show()
 
-        plt.plot(self.accuracy, label='Accuracy')
+        # accuracy curves
+        plt.plot(self.train_accuracy, label='Training Accuracy')
+        plt.plot(self.test_accuracy, label='Test Accuracy')
+        plt.plot(self.val_accuracy, label='Validation Accuracy')
+        plt.xlabel('Epochs')
+        plt.ylabel('Accuracy')
+        plt.title('Accuracy Curves')
         plt.legend()
         plt.show()
+
+
+    
 
 
     def get_uncertainty(self):
@@ -192,31 +374,6 @@ class runBNNClassification:
         return uncertainty
 
 
-    def getEnsembleUncertainty(self):
-        '''
-        Function to get the uncertainty of the ensemble model
-        '''
-        # use the model to predict the validation data 3 times
-        self.model.eval()
-        ensemble_uncertainty = []
-        with torch.no_grad():
-            for X, y in self.dataloader_val:
-                X, y = X.to(self.device), y.to(self.device)
-                outputs = self.model(X)
-                ensemble_uncertainty.append(outputs)
-                outputs = self.model(X)
-                ensemble_uncertainty.append(outputs)
-                outputs = self.model(X)
-                ensemble_uncertainty.append(outputs)
-
-        # rescale the uncertainty to be between 0 and 1
-        for i in range(len(ensemble_uncertainty)):
-            ensemble_uncertainty[i] = torch.nn.functional.softmax(ensemble_uncertainty[i], dim=1)
-
-        return ensemble_uncertainty
-
-
-
     def save_model(self, path):
         torch.save(self.model.state_dict(), path)
     
@@ -225,52 +382,53 @@ def main():
 
     if args.model == "SimpleFFBNNClassification":
         model = SimpleFFBNNClassification(4, 5)
+
         run = runBNNClassification(model, dataloader_train, dataloader_test, dataloader_val, device, args.epochs, args.lr, args.criterion, torch.optim.Adam, args.savemodel)
-        test_loss, val_loss, accuracy, accuracy_per = run.train()
-        print(f'Achieved Accuracy: {accuracy_per}')
+        run.trainClosedFormClassification()
         run.visualizeLoss()
-        uncertainty_simple_model = run.get_uncertainty()
+        #uncertainty_simple_model = run.get_uncertainty()
         #for i in range(len(uncertainty_simple_model)):
          #   for j in range(len(uncertainty_simple_model[i])):
           #      print(f'Max Uncertainty: {torch.max(uncertainty_simple_model[i][j])}')
            #     print(f'Min Uncertainty: {torch.min(uncertainty_simple_model[i][j])}')
-
-
-
         kl = run.model.kl_divergence()
         print(f'KL Divergence: {kl}')
-
-       # get the ensemble uncertainty
-        ensemble_uncertainty = run.getEnsembleUncertainty()
-        
-       # print the ensemble uncertainty for the first 5 samples
-        for i in range(5):
-            print(f'Ensemble Uncertainty: {ensemble_uncertainty[0][i]}')
-            print(f'Ensemble Uncertainty: {ensemble_uncertainty[1][i]}')
-            print(f'Ensemble Uncertainty: {ensemble_uncertainty[2][i]}')
-
-            
-
-        
-        
-
-
 
         if args.savemodel:
             run.save_model('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/trainedModels/simple_model.pth')
 
+        # run from terminal with the following command:
+
+
         # run the simple model from terminal with the following command:
         # python runBNNClassification.py -m SimpleFFBNNClassification -e 1000 -l 0.0001 -c nn.CrossEntropyLoss() -s True
 
+    elif args.model == "BBBClassification":
+        model = BBBClassification(4, 5)
+        run = runBNNClassification(model, dataloader_train, dataloader_test, dataloader_val, device, args.epochs, args.lr, args.criterion, torch.optim.Adam, args.savemodel)
+        run.trainBBBClassification()
+        run.visualizeLoss()
+        #uncertainty_bbb_model = run.get_uncertainty()
+        #for i in range(len(uncertainty_bbb_model)):
+         #   for j in range(len(uncertainty_bbb_model[i])):
+          #      print(f'Max Uncertainty: {torch.max(uncertainty_bbb_model[i][j])}')
+           #     print(f'Min Uncertainty: {torch.min(uncertainty_bbb_model[i][j])}')
+        kl = run.model.kl_divergence()
+        print(f'KL Divergence: {kl}')
+
+        if args.savemodel:
+            run.save_model('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/trainedModels/bbb_model.pth')
+
+        # run the bbb model from terminal with the following command:
+        # python runBNNClassification.py -m BBBClassification -e 1000 -l 0.0001 -c nn.CrossEntropyLoss() -s True
 
     else:
         model = LargeFFBNNClassification(4, 5)
         print(model)
-        run = runBNNClassification(model, dataloader_train, dataloader_test, dataloader_val, device, args.epochs, args.lr, args.criterion, torch.optim.Adam, args.savemodel)
-        test_loss, val_loss, accuracy, accuracy_per = run.train()
-        print(f'Achieved Accuracy: {accuracy_per}')
+        run = runBNNClassification(model, dataloader_train, dataloader_test, dataloader_val, device, args.epochs, args.lr, args.criterion, torch.optim.Adam, args.savemodel) 
+        run.trainClosedFormClassification()
         run.visualizeLoss()
-        uncertainty_large_model = run.get_uncertainty()
+        #uncertainty_large_model = run.get_uncertainty()
         #for i in range(len(uncertainty_large_model)):
          #   for j in range(len(uncertainty_large_model[i])):
           #      print(f'Max Uncertainty: {torch.max(uncertainty_large_model[i][j])}')
@@ -286,3 +444,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# run the large model from terminal with the following command:
+# python runBNNClassification.py -m LargeFFBNNClassification -e 1000 -l 0.0001 -c nn.CrossEntropyLoss() -s True
