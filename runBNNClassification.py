@@ -8,6 +8,8 @@ from Models.largeFFBNNClassification import LargeFFBNNClassification
 from Models.BBBClassification import BBBClassification
 import matplotlib.pyplot as plt
 import argparse
+import torch.nn.functional as F
+import numpy as np
 
 def arg_inputs():
     # initiate the parser
@@ -70,7 +72,7 @@ device = get_device()
 
 # read data and preprocess
 df = pd.read_csv('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/Data/quality_of_food_int.csv')
-dataloader_train, dataloader_test, dataloader_val = preprocess_classification_data(df)
+dataloader_train, dataloader_test, dataloader_val = preprocess_classification_data(df, 64)
 
 # define the model
 class runBNNClassification:
@@ -85,9 +87,12 @@ class runBNNClassification:
         self.criterion = nn.CrossEntropyLoss()
         self.optimizer = torch.optim.Adam(model.parameters(), lr=lr)
         self.model.to(device)
+        self.train_loss = []
         self.test_loss = []
         self.val_loss = []
-        self.accuracy = []
+        self.train_accuracy = []
+        self.test_accuracy = []
+        self.val_accuracy = []
         self.savemodel = savemodel
         
     def objective(self, output, target, kl, beta):
@@ -174,31 +179,32 @@ class runBNNClassification:
         print('Finished Training')
 
     def trainBBBClassification(self):
-        train_accuracy, test_accuracy, val_accuracy = [], [], []
-        self.train_loss, self.test_loss, self.val_loss = [], [], []
+        correct = 0
+        total = 0
         for epoch in range(self.epochs):
-            correct = 0
             self.model.train()
             for X, y in self.dataloader_train:
                 X, y = X.to(self.device), y.to(self.device)
-                self.optimizer.zero_grad()
+                self.optimizer = torch.optim.SGD(self.model.parameters(), lr=self.lr, momentum=0.9)
                 outputs = self.model(X)
                 _, predicted = torch.max(outputs, 1)
                 correct += (predicted == y).sum().item()
+                total += y.size(0)
                 TrainLoss = self.model.sample_elbo(inputs=X,
                                                labels=y,
                                                criterion=self.criterion,
                                                sample_nbr=3,
                                                complexity_cost_weight=1/len(self.dataloader_train))
 
-                accuracy_train = 100 * correct / len(self.dataloader_train.dataset)
-            train_accuracy.append(accuracy_train)
+                accuracy_train = 100 * correct / total
+            self.train_accuracy.append(accuracy_train)
 
             TrainLoss.backward()
             self.optimizer.step()
 
             # get the test loss
             correct = 0
+            total = 0
             self.model.eval()
             with torch.no_grad():
                 for X, y in self.dataloader_test:
@@ -206,19 +212,21 @@ class runBNNClassification:
                     outputs = self.model(X)
                     _, predicted = torch.max(outputs, 1)
                     correct += (predicted == y).sum().item()
+                    total += y.size(0)
                     TestLoss = self.model.sample_elbo(inputs=X,
                                                labels=y,
                                                criterion=self.criterion,
                                                sample_nbr=3,
                                                complexity_cost_weight=1/len(self.dataloader_test))
 
-                    accuracy_test = 100 * correct / len(self.dataloader_test.dataset)
-            test_accuracy.append(accuracy_test)
+                accuracy_test = 100 * correct / total
+            self.test_accuracy.append(accuracy_test)
                     
 
 
             # get the validation loss
             correct = 0
+            total = 0
             self.model.eval()
             with torch.no_grad():
                 for X, y in self.dataloader_val:
@@ -226,14 +234,15 @@ class runBNNClassification:
                     outputs = self.model(X)
                     _, predicted = torch.max(outputs, 1)
                     correct += (predicted == y).sum().item()
+                    total += y.size(0)
                     ValLoss = self.model.sample_elbo(inputs=X,
                                                labels=y,
                                                criterion=self.criterion,
                                                sample_nbr=3,
                                                complexity_cost_weight=1/len(self.dataloader_val.dataset))
 
-                    accuracy_val = 100 * correct / len(self.dataloader_val.dataset)
-            val_accuracy.append(accuracy_val)
+                accuracy_val = 100 * correct / total
+            self.val_accuracy.append(accuracy_val)
                     
             
 
@@ -242,9 +251,9 @@ class runBNNClassification:
             self.test_loss.append(TestLoss)
             self.val_loss.append(ValLoss)
 
-            self.train_accuracy = train_accuracy
-            self.test_accuracy = test_accuracy
-            self.val_accuracy = val_accuracy
+            #self.train_accuracy = train_accuracy
+            #self.test_accuracy = test_accuracy
+            #self.val_accuracy = val_accuracy
 
             print(f'Epoch: {epoch + 1}, trainloss: {self.train_loss[-1]}, testloss: {self.test_loss[-1]}, valloss: {self.val_loss[-1]}')
             print(f'Epoch: {epoch + 1}, trainaccuracy: {self.train_accuracy[-1]}, testaccuracy: {self.test_accuracy[-1]}, valaccuracy: {self.val_accuracy[-1]}')       
@@ -275,7 +284,7 @@ class runBNNClassification:
             correct = (predicted == self.dataloader_train.dataset.tensors[1].to(self.device)).sum().item()
             accuracy = 100 * correct / m
             train_accuracy.append(accuracy)
-            print(f'Epoch: {epoch}, Loss: {loss}, Accuracy: {accuracy}')
+            print(f'Epoch: {epoch}, Train Loss: {loss}, Accuracy: {accuracy}')
 
             loss.backward()
             self.optimizer.step()
@@ -351,8 +360,20 @@ class runBNNClassification:
         plt.legend()
         plt.show()
 
-
+    def saveMetrics(self, path):
     
+        train_loss = torch.tensor(self.train_loss).detach().numpy()
+        test_loss = torch.tensor(self.test_loss).detach().numpy()
+        val_loss = torch.tensor(self.val_loss).detach().numpy()
+
+        # save the metrics
+        np.save(f'{path}/train_loss.npy', train_loss)
+        np.save(f'{path}/test_loss.npy', test_loss)
+        np.save(f'{path}/val_loss.npy', val_loss)
+        np.save(f'{path}/train_accuracy.npy', self.train_accuracy)
+        np.save(f'{path}/test_accuracy.npy', self.test_accuracy)
+        np.save(f'{path}/val_accuracy.npy', self.val_accuracy)
+
 
 
     def get_uncertainty(self):
@@ -394,6 +415,9 @@ def main():
         kl = run.model.kl_divergence()
         print(f'KL Divergence: {kl}')
 
+        # save the metrics
+        run.saveMetrics('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/ThesisPlots/Results/Classification/SimpleClassification')
+
         if args.savemodel:
             run.save_model('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/trainedModels/simple_model.pth')
 
@@ -416,6 +440,9 @@ def main():
         kl = run.model.kl_divergence()
         print(f'KL Divergence: {kl}')
 
+        # save the metrics
+        run.saveMetrics('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/ThesisPlots/Results/Classification/BBB')
+
         if args.savemodel:
             run.save_model('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/trainedModels/bbb_model.pth')
 
@@ -436,6 +463,9 @@ def main():
 
         kl = run.model.kl_divergence()
         print(f'KL Divergence: {kl}')
+
+        # save the metrics
+        run.saveMetrics('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/ThesisPlots/Results/Classification/DenseClassification')
 
         if args.savemodel:
             run.save_model('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/trainedModels/large_model.pth')
