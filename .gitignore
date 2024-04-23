@@ -3,3 +3,9 @@
 
 # ignore the folder logs
 logs/
+
+# ignore the folder __pycache__
+__pycache__/
+
+# ignore .pkl files (for now)
+*.pkl
