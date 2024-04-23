@@ -76,7 +76,8 @@ def preprocess_data(df, batch_size):
     dataloader_train = DataLoader(dataset_train, batch_size= batch_size, shuffle=True)
     dataloader_test = DataLoader(dataset_test, batch_size= batch_size, shuffle=False)
     dataloader_val = DataLoader(dataset_val, batch_size= batch_size, shuffle=False)
-    return dataloader_train, dataloader_test, dataloader_val
+    return dataloader_train, dataloader_test, dataloader_val, dataset_train, dataset_test, dataset_val
+
 
 def preprocess_classification_data(df, batch_size):
   df_custom = pd.read_csv('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/Data/quality_of_food_int.csv')
