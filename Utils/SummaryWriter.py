@@ -17,5 +17,5 @@ class LogSummary():
     def write_per_round_accuracy(self, accuracy, round, epoch):
         self.writer.add_scalar('Round/'+str(round)+'/Accuracy', accuracy, epoch)
     
-    def per_round_layer_output(self, layer_sz, layer_op, round):
-        self.writer.add_histogram('/Layer-'+str(layer_sz), layer_op, round)
+    def per_round_layer_output(self, layer_sz, layer_op, rounds):
+        self.writer.add_histogram('/Layer-'+str(layer_sz), layer_op, rounds)

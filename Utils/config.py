@@ -74,9 +74,36 @@ def preprocess_data(df, batch_size):
     dataset_test = TensorDataset(X_test, y_test)
     dataset_val = TensorDataset(X_val, y_val)
     dataloader_train = DataLoader(dataset_train, batch_size= batch_size, shuffle=True)
-    dataloader_test = DataLoader(dataset_test, batch_size= batch_size, shuffle=False)
-    dataloader_val = DataLoader(dataset_val, batch_size= batch_size, shuffle=False)
+    dataloader_test = DataLoader(dataset_test, batch_size= batch_size, shuffle=True)
+    dataloader_val = DataLoader(dataset_val, batch_size= batch_size, shuffle=True)
     return dataloader_train, dataloader_test, dataloader_val, dataset_train, dataset_test, dataset_val
+
+def preprocess_activeL_data(df):
+    df_custom = pd.read_csv('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/Data/quality_of_food.csv')
+    df_custom = custom_data_loader(df_custom, is_normalize=True)
+    scaler = StandardScaler()
+    X = df_custom.X
+    y = df_custom.y
+    X = scaler.fit_transform(X)
+    y = scaler.fit_transform(y.reshape(-1,1))
+
+    # split into data to train the seed model and data to be used for active learning
+    X_seed, X_activeL, y_seed, y_activeL = train_test_split(X, y, test_size=0.1, random_state=11)
+    X_seed, y_seed = torch.FloatTensor(X_seed), torch.FloatTensor(y_seed)
+    X_activeL, y_activeL = torch.FloatTensor(X_activeL), torch.FloatTensor(y_activeL)
+    
+    # create dataset for training the seed model in active learning 
+    dataset_activeL = TensorDataset(X_activeL, y_activeL)
+
+    # split seed data into training and test data
+    X_train, X_test, y_train, y_test = train_test_split(X_seed, y_seed, test_size=0.3, random_state=11)
+    X_train, y_train = torch.FloatTensor(X_train), torch.FloatTensor(y_train)
+    X_test, y_test = torch.FloatTensor(X_test), torch.FloatTensor(y_test)
+    dataset_train = TensorDataset(X_train, y_train)
+    dataset_test = TensorDataset(X_test, y_test)
+
+    # return train and test for the seed model and the active learning dataset 
+    return dataset_train, dataset_test, dataset_activeL
 
 
 def preprocess_classification_data(df, batch_size):

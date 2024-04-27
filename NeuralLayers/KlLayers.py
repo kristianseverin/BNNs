@@ -18,6 +18,7 @@ def reparameterize(mu, logvar, cuda = False, sample = True):
             eps = torch.FloatTensor(std.size()).normal_()
         
         eps = torch.autograd.Variable(eps)
+        print(f'this is mu: {mu}, this is std: {std}, this is eps: {eps}')
         return mu + std * eps
     else:
         return 
@@ -88,19 +89,24 @@ class KlLayers(Module):
 
     def forward(self, x):
         """ Function for forward pass. """
-        self.posterior_parameters()
-        return F.linear(x, self.posterior_weight_mean, self.bias_mu)
+        #self.posterior_parameters()
+        #return F.linear(x, self.posterior_weight_mean, self.bias_mu)
 
         batch_size = x.size()[0]
+        print(f' this is batch_size: {batch_size}')
 
-        z = reparameterize(self.dropout_mu.repeat(batch_size, 1), self.dropout_logvar.repeat(batch_size, 1), sampling = self.training, cuda = self.cuda)
+        print(f'this is self.dropout_mu: {self.dropout_mu}, this is self.dropout_logvar: {self.dropout_logvar}')
+        print(f'these are the shapes: {self.dropout_mu.repeat(batch_size, 1).shape}, {self.dropout_logvar.repeat(batch_size, 1).shape}')
+
+        z = reparameterize(self.dropout_mu.repeat(batch_size, 1), self.dropout_logvar.repeat(batch_size, 1), sample = self.training, cuda = self.cuda)
+        #print(f'this is z: {z}, this is x: {x}')
 
         # local reparameterization trick
         xz = x * z
         mu_activation = F.linear(xz, self.weight_mu, self.bias_mu)
         var_activation = F.linear(xz.pow(2), self.weight_logvar.exp(), self.bias_logvar.exp())
 
-        return reparameterize(mu_activation, var_activation.log(), sampling = self.training, cuda = self.cuda)
+        return reparameterize(mu_activation, var_activation.log(), sample = True, cuda = self.cuda)
 
     def kl_divergence(self):
         """ Function for calculating the KL divergence of the layer. """
