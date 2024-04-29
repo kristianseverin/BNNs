@@ -80,12 +80,31 @@ def preprocess_data(df, batch_size):
 
 def preprocess_activeL_data(df):
     df_custom = pd.read_csv('/Users/kristian/Documents/Skole/9. Semester/Thesis Preparation/Code/BNNs/Data/quality_of_food.csv')
-    df_custom = custom_data_loader(df_custom, is_normalize=True)
+    df_custom = custom_data_loader(df_custom, is_normalize=False)
+    print(df_custom)
+    # retrieve the X.mean() and X.std() that was used to normalize the data
+    #x_mean_income = df_custom.X[:,0].mean()
+    #x_std_income = df_custom.X[:,0].std()
+    #x_mean_time = df_custom.X[:,1].mean()
+    #x_std_time = df_custom.X[:,1].std()
+    #x_mean_savings = df_custom.X[:,2].mean()
+    #x_std_savings = df_custom.X[:,2].std()
+    #x_mean_guests = df_custom.X[:,3].mean()
+    #x_std_guests = df_custom.X[:,3].std()
+    #x_mean = [x_mean_income, x_mean_time, x_mean_savings, x_mean_guests]
+    #x_std = [x_std_income, x_std_time, x_std_savings, x_std_guests]
+    # print df_custom.X
+    
+
+
+
     scaler = StandardScaler()
     X = df_custom.X
     y = df_custom.y
     X = scaler.fit_transform(X)
     y = scaler.fit_transform(y.reshape(-1,1))
+    
+    
 
     # split into data to train the seed model and data to be used for active learning
     X_seed, X_activeL, y_seed, y_activeL = train_test_split(X, y, test_size=0.1, random_state=11)
@@ -103,7 +122,7 @@ def preprocess_activeL_data(df):
     dataset_test = TensorDataset(X_test, y_test)
 
     # return train and test for the seed model and the active learning dataset 
-    return dataset_train, dataset_test, dataset_activeL
+    return dataset_train, dataset_test, dataset_activeL, df_custom
 
 
 def preprocess_classification_data(df, batch_size):
