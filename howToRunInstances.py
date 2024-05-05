@@ -88,6 +88,7 @@ class runActiveLearning():
         self.seed_sample = seed_sample
         self.optimizer = optimizer
         self.df_custom = df_custom
+        self.retrain = retrain
         
 
         # a set of lists to store the selected indices with highest uncertainty
@@ -112,17 +113,13 @@ class runActiveLearning():
         y: the ensemble outputs (shape: 30, 64, 1)'''
         # calculate the entropy of the ensemble outputs using pytorch
         flattened_y = y.view(y.size(0), -1)
-
         probs = F.softmax(flattened_y, dim=1)
-
-
         entropy = -(probs * torch.log(probs)).sum(dim=1)
-
-        #entropy = entropy.detach().numpy()
-
-        #H = entropy(y, axis=1) # calculate the entropy of the ensemble outputs using scipy.stats.entropy
-        # return H as a Tensor
         return entropy
+
+    def get_variation_ratio(self, y):
+        standard_deviation = torch.std(y, dim=0).view(-1)
+        return standard_deviation
 
     def get_validation_data(self, is_validation):
         if not is_validation:
@@ -144,30 +141,20 @@ class runActiveLearning():
         if rounds == 0:    
             # randomly select data
             self.selected_data = set(range(self.dataloader_train))  # seed sample in Rakeesh & Jain paper
-           
-            #self.unexplored_data = self.unexplored_data.difference(self.selected_data) # all 
-
         else:
             minimum_index = np.random.choice(list(self.unexplored_data), self.top_unc)
-      
             self.selected_data = self.selected_data.union(minimum_index)
-
             self.unexplored_data = self.unexplored_data.difference(self.selected_data)
 
 
 
     def activeDataSelection(self, rounds):
-
         
         if rounds == 1:
-
             self.selected_data = set(range(len(self.dataloader_train)))
             self.unexplored_data = self.selected_data
-            print(f'Length of the unexplored data: {len(self.unexplored_data)}, round: {rounds}')
-
         else:
             self.all_data = DataLoader(self.dataloader_train, batch_size=self.batch_size, shuffle=False, num_workers=1)
-            print(f'Length of the all data: {len(self.all_data)} in round: {rounds}')
             correct = 0
             metrics = []
             hook_handles = []
@@ -188,8 +175,9 @@ class runActiveLearning():
                     y_pred = self.model(X)
        
                     ensemble_outputs = y_pred.reshape(self.instances, batch_size, 1)
-                    entropy = self.get_entropy(ensemble_outputs)
-                    metrics.append(entropy)
+                    #entropy = self.get_entropy(ensemble_outputs)
+                    variation_ratio = self.get_variation_ratio(ensemble_outputs)
+                    metrics.append(variation_ratio)
                     
                 save_output.clear()
                 save_output.counter = 0
@@ -202,41 +190,20 @@ class runActiveLearning():
             
                 self.selected_data =  set(new_indices[:self.top_unc])
                 self.unexplored_data = self.unexplored_data.difference(self.selected_data)
-                print(f'Length of the unexplored data: {len(self.unexplored_data)}, round: {rounds}')
-                print(f'Length of the selected data: {len(self.selected_data)}, round: {rounds}')
-        
-        #return self.selected_data
                 
-
-
-
-
-     
-             
-  
     def annotateSelectedData(self, rounds):
         
-        print(f'Length of the selected data: {len(self.selected_data)}')
         indices = list(self.selected_data)
-        print(f'in the annotateSelectedData function, the indices are: {indices}')
-
         data_to_annotate = [self.all_data.dataset[i] for i in indices]
-
         # remove the selected data from the all data
         x_all = [x for x, y in self.all_data.dataset]
         y_all = [y for x, y in self.all_data.dataset]
-        
         x_all = [x for i, x in enumerate(x_all) if i not in indices]
         y_all = [y for i, y in enumerate(y_all) if i not in indices]
-        print(f'Length of the x_all: {len(x_all)}')
-        print(f'Length of the y_all: {len(y_all)}')
 
         # create a new dataset from the remaining data
         self.dataloader_train = TensorDataset(torch.stack(x_all), torch.stack(y_all))
-        print(f'Length of the new dataset: {len(self.dataloader_train)}')
 
-
-        
         def refit_and_rescale(data):
             
             data_to_fit_X = self.df_custom.X
@@ -264,9 +231,7 @@ class runActiveLearning():
             Therefore, the values close to 0 are replaced with 0'''
             tolerance = 1e-5
             x_df = x_df.mask(x_df.abs() < tolerance, 0)
-
             return x_df
-
         
         df = refit_and_rescale(data_to_annotate)
 
@@ -279,7 +244,8 @@ class runActiveLearning():
             args:
             data: the data to be annotated in a pandas dataframe format with the columns income, time, savings and guests
             
-            nb: the y_values should be generated without random noise as noise doesn't make theoretical sense in this context'''
+            nb: the y_values should be generated without random noise as noise doesn't make theoretical sense in this context 
+            (note to self: the opposite is most likely true, as the noise is what makes the data more realistic and less deterministic)''' 
             quality_based_on_income = np.where(data['income'] >= 7000, 5,
             np.where(data['income'] >= 4000, 4,
             np.where(data['income'] >= 3000, 3,
@@ -292,13 +258,10 @@ class runActiveLearning():
 
             # make the quality of food y in the data
             data['quality_of_food'] = quality_of_food
-
             return data
-
-            
-        annotated_data = determine_quality(df)
-
         
+        annotated_data = determine_quality(df)
+    
         # scale the newly annotated data
         x_scaler = StandardScaler().fit(self.df_custom.X)
         x = annotated_data.drop('quality_of_food', axis = 1)
@@ -307,42 +270,45 @@ class runActiveLearning():
         x_scaled = torch.tensor(x_scaled.astype(np.float32))   
         y_scaler = StandardScaler().fit(self.df_custom.y.reshape(-1, 1))
         y_scaled = y_scaler.transform(y.values.reshape(-1, 1))
+        y_scaled = torch.tensor(y_scaled.astype(np.float32))
         y_scaled = torch.tensor(y_scaled)
 
-        # create a tensor dataset from the annotated data
+        if rounds == 3: # seems arbitrary, but the first 2 rounds are not annotated (starts at 1 training seed model, then finds the top_uncertain data)
+            x_already_annotated = [x for x, y in self.dataset_active_l]
+            y_already_annotated = [y for x, y in self.dataset_active_l]
 
-        '''Note to myself tomorrow:
-        access the X,y of both datasets and make one dataset from them'''
-
-        
-        x_already_annotated = [x for x, y in self.dataset_active_l]
-        y_already_annotated = [y for x, y in self.dataset_active_l]
+            # make all tensors dtype(np.float32)
+        else:
+            x_already_annotated = [x for x, y in self.combined_dataset]
+            y_already_annotated = [y for x, y in self.combined_dataset]
+  
         
         x_alr_numpy = [x.numpy() for x in x_already_annotated]
         x_alr_tensors = torch.tensor(x_alr_numpy)
 
         y_alr_numpy = [y.numpy() for y in y_already_annotated]
         y_alr_tensors = torch.tensor(y_alr_numpy)
-
-    
+ 
         x_all_annotated = torch.cat((x_scaled, x_alr_tensors), 0)
         y_all_annotated = torch.cat((y_scaled, y_alr_tensors), 0)
 
-
-        combined_dataset = TensorDataset(x_all_annotated, y_all_annotated)    
-        print(f'combined dataset: {combined_dataset}, {len(combined_dataset)}')
+        self.combined_dataset = TensorDataset(x_all_annotated, y_all_annotated)    
+        self.all_annotated_data = DataLoader(self.combined_dataset, shuffle = False, num_workers=1) # for the next round of active learning
         
-        # should be fed into the train() function as the new training data every round
-        self.all_annotated_data = DataLoader(combined_dataset, batch_size=self.batch_size, shuffle = False, num_workers=1)
-        print(f'Length of the all annotated data: {len(self.all_annotated_data)} should be longer than the previous length of the all annotated data')
 
     def TrainModel(self, rounds, epochs, is_validation):
         '''This function trains the seed model for the active learning process
         '''
         
-        '''have to change train_loader to active_data_l'''
-        
-        #print('running model')
+        if self.retrain == True:
+            # load the model with no training to retrain from scratch
+            self.model = SimpleFFBNNPaper(4, 1)
+
+        if device.type == 'cpu':
+            self.model = self.model.to(device)
+
+
+
         t_total, v_total = 0, 0
         t_r2_scores = []
         if epochs == 1:
@@ -352,15 +318,34 @@ class runActiveLearning():
         t_likelihood, v_likelihood = [], []
         t_kl, v_kl = [], []
         self.model.train()
-        m = len(self.train_loader)
-       # print(f'this is the train loader: {self.train_loader}, {len(self.train_loader)}')
+        # if rounds smaller or equal to 3, the data to be trained on is the active data set
+        
+        if rounds <= 3:
+            m = len(self.dataset_active_l)
+        else:
+            m = len(self.all_annotated_data)
+        
 
-       # print('before loop, this is the train loader: {}'.format(self.train_loader), len(self.train_loader))
-        for batch_index, (inputs, targets) in enumerate(self.train_loader):
-         #   print('running loop')
+        if rounds <= 3:
+            self.running_accumulation_annots = self.dataset_active_l
+            
+        else:
+            self.running_accumulation_annots = self.all_annotated_data
+            for X, y in self.running_accumulation_annots:
+                # shape is now torch.Size([1, 4]), needs to be torch.Size([4])
+                X = X.squeeze()
+                # shape is now torch.Size([1, 1]), needs to be torch.Size([1])
+                y = y.reshape(-1)
+
+            
+        for batch_index, (inputs, targets) in enumerate(self.running_accumulation_annots):
             X = inputs.repeat(self.instances,1) # (number of mcmc samples, input size)
-            #Y = targets.squeeze()
-            Y = Y.repeat(self.instances) # (number of mcmc samples, output size)
+            
+            if rounds <= 3:
+                Y = targets.repeat(self.instances) # (number of mcmc samples, output size)
+            else:
+                Y = targets.squeeze().repeat(self.instances)
+            
             X, Y = X.to(device), Y.to(device)
             outputs = self.model(X)
             loss, log_likelihood, kl = self.objective(outputs, Y, self.model.kl_divergence(), 1 / m)
@@ -369,8 +354,9 @@ class runActiveLearning():
             t_total += targets.size(0)
 
             
-
-            #outputs = outputs.view(self.batch_size, -1)
+            #if rounds > 3:
+                #print(f'inputs: {inputs.shape}, type: {type(inputs)}, first 5: {inputs[:5]}')
+            #print(f'outputs: {outputs.shape}, type: {type(outputs)}, first 5: {outputs[:5]}')
           
             # calculate r2 score manually
             r2_score_value = 1 - (np.sum((outputs.detach().cpu().numpy() - targets.detach().cpu().numpy()) ** 2) / np.sum((targets.detach().cpu().numpy() - np.mean(targets.detach().cpu().numpy())) ** 2))
@@ -426,10 +412,10 @@ class runActiveLearning():
             avg_t_kl = np.average(t_kl)
             avg_t_r2 = np.average(t_r2_scores)
 
-         #   print(
-          #      'epochs: {}, train loss: {}, train likelihood: {}, train kl: {}, train_avg_R2: {}'.format(
-           #         epochs, avg_t_loss, \
-            #        avg_t_likelihood, avg_t_kl, avg_t_r2))
+            print(
+                'epochs: {}, train loss: {}, train likelihood: {}, train kl: {}, train_avg_R2: {}'.format(
+                    epochs, avg_t_loss, \
+                    avg_t_likelihood, avg_t_kl, avg_t_r2))
 
             return avg_t_loss, avg_t_r2
 
@@ -443,6 +429,8 @@ class runActiveLearning():
         self.model.load_state_dict(state['weights'])
         print(f'Model loaded: {self.model}')
 
+        
+
         self.model.eval()
         predictions = []
         actual = []
@@ -450,6 +438,7 @@ class runActiveLearning():
         with torch.no_grad():
             for batch_index, (inputs, targets) in enumerate(self.dataloader_test):
                 X, Y = inputs.to(device), targets.to(device)
+                
                 outputs = self.model(inputs)
 
                 # Calculate the MSE loss for the batch
@@ -460,18 +449,40 @@ class runActiveLearning():
                 mse_score = loss.item()
                 mse_scores.append(mse_score)
 
-                # Convert predictions and actual values to numpy arrays
-                predictions.append(outputs.detach().cpu().numpy())      
+                predictions.append(torch.mean(outputs, 0).detach().cpu().numpy()) # mean of the outputs
                 actual.append(Y.detach().cpu().numpy())
-                
+               
 
         predictions = np.concatenate(predictions)
         actual = np.concatenate(actual)
-        df = pd.DataFrame(data = {'Predictions': predictions, 'Actual': actual})
-        df.loc['R2'] = 1 - np.sum((df.Actual - df.Predictions) ** 2) / np.sum((df.Actual - np.mean(df.Actual)) ** 2)
-        df.loc['MSE'] = mean_squared_error(df.Actual, df.Predictions)
         
-        #print('Non-Ensemble Test MSE:{:.3f}, TestR2:{:.3f}'.format(df.loc["MSE"][0], df.loc["R2"][0]))
+        
+        # print the shape of the predictions
+        print(f'Predictions shape: {predictions.shape}')
+            
+
+        print(f'Predictions: {len(predictions)}')
+        
+        print(f'Actual: {len(actual)}')
+
+        df = pd.DataFrame(data = {'Predictions': predictions, 'Actual': actual})
+        df['R2'] = r2_score(df.Actual, df.Predictions)
+        df['MSE'] = mean_squared_error(df.Actual, df.Predictions)
+        df['RMSE'] = np.sqrt(df['MSE'])
+        print(f'This is the dataframe: {df.head()}')
+        print(f'This is the R2 score: {r2_score(df.Actual, df.Predictions)}')
+        print(f'This is the MSE score: {mean_squared_error(df.Actual, df.Predictions)}')
+        # adjusted r2 score
+        n = len(df)
+        p = 4
+        r2 = r2_score(df.Actual, df.Predictions)
+        adj_r2 = 1 - (1 - r2) * (n - 1) / (n - p - 1)
+        print(f'This is the adjusted R2 score: {adj_r2}')
+        # save the results
+        #df.to_csv('ThesisPlots/Results/Regression/SimpleFFBNN/ActiveLearning/results' + str(rounds) + '.csv', index=False)
+        # save the results without overwriting
+        df.to_csv('ThesisPlots/Results/Regression/SimpleFFBNN/ActiveLearning/results' + str(rounds) + '.csv', mode='a', header=False)
+        
                 
 
     def getTrainedModel(self, rounds):
@@ -488,7 +499,7 @@ class runActiveLearning():
             'optimizer': self.optimizer.state_dict()
             }
 
-        path_to_save = 'trainedModels/trained_weights/' + self.model_name + '_' + 'e' + str(self.epochs) + '_' + '-r' + str(self.rounds) + '-b' + str(self.batch_size) + '.pkl'
+        path_to_save = path_to_save
 
         torch.save(state, path_to_save)
         
@@ -498,7 +509,7 @@ if __name__ == '__main__':
 
 
     # use the class to run the active learning
-    active_learning = runActiveLearning(model_name='simple', model=model, dataloader_train=dataset_train, top_unc = 10, dataloader_test=dataset_test, dataset_active_l= dataset_activeL, epochs=100, rounds=7, learning_rate=0.001, batch_size=64, instances = 30, seed_sample=4, retrain=False, resume_round=False, optimizer= torch.optim.Adam(model.parameters(), lr=0.001), df_custom = df_custom)
+    active_learning = runActiveLearning(model_name='simple', model=model, dataloader_train=dataset_train, top_unc = 100, dataloader_test=dataset_test, dataset_active_l= dataset_activeL, epochs=200, rounds=26, learning_rate=0.0001, batch_size=64, instances = 30, seed_sample=1, retrain=True, resume_round=False, optimizer= torch.optim.SGD(model.parameters(), lr=0.001), df_custom = df_custom)
 
     write_summary = LogSummary('active_learning')
 
@@ -512,12 +523,12 @@ if __name__ == '__main__':
     model, path = active_learning.getTrainedModel(1)
 
     # save the model
-    active_learning.saveModel(model, active_learning.optimizer, path)
+    active_learning.saveModel(model, active_learning.optimizer, 'trainedModels/trained_weights/' + 'simple' + '_' + 'e' + str(active_learning.epochs) + '_' + '-r' + str(1) + '-b' + str(64) + '.pkl')
 
     # run the active learning process
     for r in range(1, active_learning.rounds):
         print(f'Round: {r}')
-            #model, path = active_learning.getTrainedModel(r)
+        #model, path = active_learning.getTrainedModel(r)
                  
         print(f'Training model in round: {r}')
         active_learning.activeDataSelection(r) 
@@ -529,11 +540,10 @@ if __name__ == '__main__':
         else:
             active_learning.annotateSelectedData(r)
 
-            # save a model for the round
-        #    active_learning.saveModel(model, active_learning.optimizer, path)
 
-        #    model, path = active_learning.getTrainedModel(r)
+        active_learning.TrainModel(r, 5, False)
+        model, path = active_learning.getTrainedModel(r)
+        active_learning.saveModel(model, active_learning.optimizer, 'trainedModels/trained_weights/' + 'simple' + '_' + 'e' + str(active_learning.epochs) + '_' + '-r' + str(r) + '-b' + str(64) + '.pkl')
 
-        # train the model
-        #print(f'Training model in round: {r}')
-        #active_learning.TrainModel(r, 5, False)
+        active_learning.TestModel(active_learning.rounds)
+  
